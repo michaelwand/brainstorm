@@ -515,6 +515,10 @@ class Handler(Describable):
         """
 
     @abc.abstractmethod
+    def get_final_zeros_index_v(self,v):
+        """ TODO """
+
+    @abc.abstractmethod
     def index_m_by_v(self, m, v, out):
         """Get elements from a matrix using indices from a vector.
 
@@ -536,6 +540,7 @@ class Handler(Describable):
         Returns:
             None
         """
+
 
     @abc.abstractmethod
     def log_t(self, a, out):
@@ -844,6 +849,35 @@ class Handler(Describable):
             out (array_type): Output array.
         Returns:
             None
+        """
+
+    @abc.abstractmethod
+    def softmax_deriv_m(self, y, y_deltas, out):
+        """Compute the derivative of the softmax function.
+
+        Args:
+            y (array_type): Softmax predictions.
+            y_deltas (array_type): Loss backpropagated from the error function.
+            out (array_type): Output array.
+        Returns:
+            None
+        """
+
+    @abc.abstractmethod
+    def calculate_ctc(self, probs, labels, out_deltas):
+        """Compute the CTC error and deltas for a single sequence.
+
+        probs is a 2d array of timesteps x softmax outputs, with any mask already applied.
+        labels is a 1d array which will be converted to integers and which must *not* 
+        contain zero elements - zeros refer to the 'blank' CTC node.
+
+        Args:
+            probs (array_type): Softmax predictions.
+            labels (array_type): Labels for CTC.
+            out_deltas (array_type): Output deltas.
+
+        Returns:
+            The computed error, as a scalar.
         """
 
     @abc.abstractmethod

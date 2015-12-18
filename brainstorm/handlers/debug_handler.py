@@ -329,6 +329,14 @@ class DebugHandler(Handler):
         self.handler.generate_probability_mask(mask.array, probability)
 
     @check_for_inf_or_nan
+    def get_final_zeros_index_v(self,v):
+        for pos in xrange(v.shape[0] - 1,-1,-1):
+            if v[pos] != 0:
+                return pos + 1
+
+        return 0
+
+    @check_for_inf_or_nan
     def index_m_by_v(self, m, v, out):
         assert_debug_arrays(m, v, out)
         assert_shapes_equal(v, out)
@@ -531,6 +539,34 @@ class DebugHandler(Handler):
         assert len(m.shape) == 2, "len({}) != 2".format(m.shape)
         self.handler.softmax_m(m.array, out.array)
 
+    @check_for_inf_or_nan
+    def softmax_deriv_m(self, y, y_deltas, out):
+        # this works framewise, no sequences involved here
+        # ok, so y has the shape (..., classes), y_deltas and out must
+        # have the same shape
+        # (...) could be ('T','B') or so
+        # y_deltas is determined by the error function, e.g. loss * (tgt/prob) for MCE
+        assert y_deltas.shape == y.shape
+        assert out.shape == y.shape
+
+#         flattable_shape = reduce(lambda x,y: x*y,y.shape[0:-1])
+        flat_y = y.reshape((-1,y.shape[-1]))
+        flat_y_deltas = y_deltas.reshape((-1,y_deltas.shape[-1]))
+        flat_out = out.reshape((-1,out.shape[-1]))
+
+        # the derivative is (citing PyLSTM):
+        # For i'th unit with input x_i, output y_i, and Error E from next layer
+        # dE/dx_i = y_i * (dE/dy_i - sum(dE/dy_j * y_j))
+
+        sum_term = np.sum(flat_y * flat_y_deltas,axis=1,keepdims=True)
+        flat_out[:] = flat_y * (flat_y_deltas - sum_term)
+
+    @check_for_inf_or_nan
+    def calculate_ctc(self, probs, labels, out_deltas):
+        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels.astype(np.int64))
+        
+        out_deltas[:] = deltas
+        return error
 
 # ############################ Helper Methods ############################### #
 

@@ -13,7 +13,7 @@ from brainstorm.training.trainer import run_network
 from brainstorm.utils import get_by_path, get_brainstorm_info
 
 __all__ = ['draw_network', 'evaluate', 'extract', 'extract_and_save',
-           'print_network_info', 'get_in_out_layers', 'create_net_from_spec']
+           'print_network_info', 'get_in_out_layers', 'get_in_out_layers_for_ctc', 'create_net_from_spec']
 
 
 def draw_network(network, file_name='network.png'):
@@ -172,6 +172,45 @@ def extract_and_save(network, iter, buffer_names, file_name):
                     ds[num].resize(size=nr_items, axis=1)
                     ds[num][:, nr_items - data.shape[1]:nr_items, ...] = data
 
+
+def get_in_out_layers_for_ctc(in_shape,out_shape, data_name='default',
+                      label_name='labels', projection_name=None,
+                      outlayer_name=None, mask_name=None, use_conv=None):
+    """
+    Works like get_in_out_layers, just subtly different. Note that a mask is required.
+    IMPORTANT: out_shape must be a single integer and ALREADY INCLUDE the extra node 
+    for the blank target
+    """
+
+    # TODO rubbish
+    if mask_name is None:
+        raise ValueError('Must give input data mask name for CTC (TODO)')
+
+    in_shape = (in_shape,) if isinstance(in_shape, int) else in_shape
+    out_shape = (out_shape,) if isinstance(out_shape, int) else out_shape
+    if len(out_shape) != 1:
+        raise ValueError('For CTC, out_shape must have a single dimension')
+
+    outlayer_name = outlayer_name or 'Output'
+    projection_name = projection_name or outlayer_name + '_projection'
+
+    proj_layer = layers.FullyConnected(out_shape, activation='linear',
+                                       name=projection_name)
+
+    out_layer = layers.CTC(name=outlayer_name)
+
+    proj_layer >> 'default' - out_layer
+
+    # the mask is directly passed to CTC layer, without using a mask layer
+    inp_layer = layers.Input(
+        out_shapes={data_name: ('T', 'B') + in_shape,
+                    label_name: ('T', 'B', 1),
+                    mask_name: ('T', 'B', 1)})
+    inp_layer - label_name >> 'labels' - out_layer
+    out_layer - 'loss' >> layers.Loss()
+    inp_layer - mask_name >> 'mask' - out_layer
+
+    return inp_layer, proj_layer
 
 def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
                       targets_name='targets', projection_name=None,

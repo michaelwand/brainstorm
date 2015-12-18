@@ -19,6 +19,151 @@ cdef inline DTYPE_t dtype_t_max(DTYPE_t a, DTYPE_t b) nogil:
 cdef inline int int_max(int a, int b) nogil: return a if a >= b else b
 cdef inline int int_min(int a, int b) nogil: return a if a <= b else b
 
+# -------------------------------- CTC stuff -------------------------------- #
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef calculate_alphas(np.ndarray[DTYPE_t, ndim=2] log_probs, np.ndarray[np.int64_t, ndim=1] labels): # TODO int64 correct?
+    # TODO Does anyone know a better way to get this type?
+    internal_type = log_probs.dtype
+    cdef int N = log_probs.shape[0]
+    cdef int S = len(labels)
+    cdef int Z = 2 * S + 1 # including blanks
+
+    cdef np.ndarray[DTYPE_t,ndim=2] alpha = np.full((N,Z), np.NINF, dtype=internal_type)
+    alpha[0, 0] = log_probs[0, 0]
+    alpha[0, 1] = log_probs[0, labels[0]]
+
+    cdef int t
+    cdef int s
+    cdef int previous_label
+    cdef int this_label
+    cdef int start
+    
+    for t in range(1, N):
+        start = max(-1, 2 * (S - N + t) + 1)
+        for s in xrange(start + 1, Z, 2): #loop for blanks (even)
+            alpha[t, s] = np.logaddexp(alpha[t, s], alpha[t - 1, s])
+            if s > 0:
+                alpha[t,s] = np.logaddexp(alpha[t, s], alpha[t - 1, s - 1])
+                
+            alpha[t, s] += log_probs[t, 0]
+        previous_label = -1
+        if start > 0:
+            previous_label = labels[start // 2 - 1]
+        for s in xrange(max(1, start), Z, 2): # loop for labels (odd)
+            alpha[t, s] = np.logaddexp(alpha[t, s], alpha[t - 1, s])
+            alpha[t, s] = np.logaddexp(alpha[t, s], alpha[t - 1, s - 1])
+            this_label = labels[s // 2]
+            if s > 1 and this_label != previous_label:
+                alpha[t, s] = np.logaddexp(alpha[t, s], alpha[t - 1, s - 2])
+            alpha[t, s] += log_probs[t, this_label]
+            previous_label = this_label
+
+    return alpha
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef calculate_betas(np.ndarray[DTYPE_t, ndim=2] log_probs, np.ndarray[np.int64_t, ndim=1] labels):
+    internal_type = log_probs.dtype
+    cdef int N = log_probs.shape[0]
+    cdef int S = len(labels)
+    cdef int Z = 2 * S + 1 # including blanks
+
+    cdef np.ndarray[DTYPE_t,ndim=2]beta = np.full((N,Z), np.NINF, dtype=internal_type)
+    beta[N-1, Z-2] = 0.0
+    beta[N-1, Z-1] = 0.0
+
+    cdef int t
+    cdef int s
+    cdef int this_label
+    cdef int stop
+    for t in xrange(N - 1, 0, -1): # 0 is deliberate
+        stop = min(Z, 2 * t)
+        for s in xrange(0,stop,2): # loop over blanks
+            beta[t - 1,s] = np.logaddexp(beta[t - 1,s],beta[t,s] + log_probs[t,0])
+            if s < Z - 1: 
+                this_label = labels[(s + 1) / 2]
+                beta[t - 1,s] = np.logaddexp(beta[t - 1,s],beta[t,s+1] + log_probs[t,this_label])
+
+
+        for s in xrange(1,stop,2): # loop over non-blanks
+            this_label = labels[s / 2]
+            
+            beta[t - 1,s] = np.logaddexp(beta[t - 1,s], beta[t,s] + log_probs[t, this_label])
+            beta[t - 1,s] = np.logaddexp(beta[t - 1,s], beta[t,s + 1] + log_probs[t, 0])
+
+            if s < Z - 2: 
+                next_label = labels[(s + 2) / 2] 
+                if this_label != next_label: 
+                    beta[t - 1,s] = np.logaddexp(beta[t - 1,s], beta[t,s+2] + log_probs[t,next_label]);
+    return beta
+
+def calculate_ctc(np.ndarray[DTYPE_t, ndim=2] probs, np.ndarray[np.int64_t, ndim=1] labels):
+    internal_type = probs.dtype
+    assert probs.ndim == 2 # just one sequence
+    assert 0 not in labels
+    assert np.all(probs >= 0.0)
+    cdef int N = probs.shape[0]
+    cdef int S = len(labels)
+    cdef int Z = 2 * S + 1 # including blanks
+    cdef int label_count = probs.shape[1]
+
+    cdef np.ndarray[DTYPE_t, ndim=2] log_probs = np.log(probs)
+
+    # Check that we can get through the time sequence at all. This requires at least
+    # as many time frames as there are labels, but when two identical labels follow 
+    # each other, the CTC would have to output an in-between blank, so the required time
+    # increases
+    cdef int required_time = S
+    cdef int pos
+    for pos in range(1,S):
+        if labels[pos - 1] == labels[pos]: 
+            required_time += 1
+
+    if required_time > N:
+        raise ValueError('Cannot perform CTC because the sequence has %d frames, but %d are required' % (N,required_time))
+
+    cdef np.ndarray[DTYPE_t, ndim=2] alpha = calculate_alphas(log_probs,labels)
+    cdef np.ndarray[DTYPE_t, ndim=2] beta = calculate_betas(log_probs,labels)
+
+    cdef np.ndarray[DTYPE_t, ndim=2] joint_prob = alpha + beta
+
+    cdef np.ndarray[DTYPE_t, ndim=1] norm_term = np.full((N,),np.NINF, dtype=internal_type )
+
+    cdef int t # used several times
+    cdef int s
+    for t in xrange(N):
+        for s in xrange(Z):
+            norm_term[t] = np.logaddexp(norm_term[t],joint_prob[t,s])
+
+    # these will be the result variables
+    cdef DTYPE_t error = 0.0;
+    cdef np.ndarray[DTYPE_t, ndim=2] log_deltas = np.full((N,label_count), np.NINF, dtype=internal_type)
+
+    cdef int this_label
+    for t in xrange(N):
+        # calculate log_deltas for even positions (empty-label)
+        for s in range(0,Z,2):
+            log_deltas[t,0] = np.logaddexp(log_deltas[t,0],joint_prob[t,s])
+        # calculate log_deltas for odd positions (with labels)
+        for s in range(1,Z,2):
+            this_label = labels[s / 2]
+            log_deltas[t,this_label] = np.logaddexp(log_deltas[t,this_label],joint_prob[t,s])
+
+        # normalize all the labels
+        log_deltas[t,:] -= log_probs[t,:] + norm_term[t]
+
+        # mean of -norm_term over time is the error
+        # Actually, the term is the same in each timestep, but Graves (Dissertation p60) suggests
+        # to recompute it for each timestep and average (done in the return statement)
+        error -= norm_term[t];
+
+    # finished iteration, convert deltas to normal from log scale
+    cdef np.ndarray[DTYPE_t, ndim=2] deltas = np.exp(log_deltas)
+
+    return error / N,deltas
+
+
 # ------------------------- Cudarray-based routines ------------------------- #
 # Please see Third Party License file for license information
 

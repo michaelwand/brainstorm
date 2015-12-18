@@ -92,6 +92,9 @@ class PyCudaHandler(Handler):
     def fill(self, mem, val):
         mem.fill(val)
 
+    def set_value_t(self, t, sl, val):
+        t[sl] = val
+
     def fill_if(self, mem, val, cond):
         fill_if_kernel(mem, val, cond)
 
@@ -280,8 +283,17 @@ class PyCudaHandler(Handler):
         self.rnd.fill_uniform(mask)
         create_probabilistic_mask_kernel(mask, probability, mask)
 
+    def get_final_zeros_index_v(self,v):
+        for pos in xrange(v.shape[0] - 1,-1,-1):
+            if v[pos] != 0:
+                return pos + 1
+
+        return 0
+
+
     def index_m_by_v(self, m, v, out):
         index_m_by_v_kernel(out, v, m, m.shape[0], m.shape[1])
+
 
     def log_t(self, a, out):
         cumath.log(a, out=out)
@@ -399,6 +411,41 @@ class PyCudaHandler(Handler):
         _softmax_impl(m, tmp.gpudata, out, np.int32(n),
                       np.int32(k), block=(32, 1, 1), grid=(n, 1, 1))
         return out
+
+    def softmax_deriv_m(self, y, y_deltas, out):
+        assert y_deltas.shape == y.shape
+        assert out.shape == y.shape
+
+        flat_y = y.reshape((-1,y.shape[-1]))
+        flat_y_deltas = y_deltas.reshape((-1,y_deltas.shape[-1]))
+        flat_out = out.reshape((-1,out.shape[-1]))
+
+        # the derivative is (citing PyLSTM):
+        # For i'th unit with input x_i, output y_i, and Error E from next layer
+        # dE/dx_i = y_i * (dE/dy_i - sum(dE/dy_j * y_j))
+
+        # TODO is this OK, or should I call self.allocate...?
+        tmp = gpuarray.empty(flat_y.shape,dtype = flat_y.dtype)
+        sum_term = gpuarray.empty((flat_y.shape[0],),dtype = flat_y.dtype)
+
+        self.mult_tt(flat_y,flat_y_deltas,tmp)
+        self.sum_t(tmp,1,sum_term)
+        self.mult_st(-1,sum_term,sum_term)
+        reshaped_sum_term = sum_term.reshape((sum_term.shape[0],1))
+        self.add_mv(flat_y_deltas,reshaped_sum_term,tmp)
+
+        self.mult_tt(flat_y,tmp,flat_out)
+
+    def calculate_ctc(self, probs, labels, out_deltas):
+        # TODO this is a CPU call
+        cpu_probs = self.get_numpy_copy(probs)
+        cpu_labels = self.get_numpy_copy(labels).astype(np.int64)
+
+        (cpu_error,cpu_deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels)
+        
+        self.set_from_numpy(out_deltas,cpu_deltas)
+        
+        return cpu_error
 
     def tanh(self, x, y):
         tanh_kernel(x, y)

@@ -199,6 +199,13 @@ class NumpyHandler(Handler):
     def generate_probability_mask(self, mask, probability):
         mask[:] = self.rnd.uniform(size=mask.shape) < probability
 
+    def get_final_zeros_index_v(self,v):
+        for pos in xrange(v.shape[0] - 1,-1,-1):
+            if v[pos] != 0:
+                return pos + 1
+
+        return 0
+
     def index_m_by_v(self, m, v, out):
         out[:, 0] = m[np.arange(m.shape[0]), v.squeeze().astype(np.int32)]
         # for i in range(m.shape[0]):
@@ -249,7 +256,7 @@ class NumpyHandler(Handler):
         np.sign(a, out=out)
 
     def split_add_tt(self, x, out_a, out_b):
-        oa = out_a.reshape(-1, out_a.shape[-1])
+        oa = out_a.reshape(-1, out_a.shape[-1]) 
         ob = out_b.reshape(-1, out_b.shape[-1])
         x_flat = x.reshape(-1, x.shape[-1])
         oa[:] += x_flat[:, :oa.shape[-1]]
@@ -293,6 +300,30 @@ class NumpyHandler(Handler):
         maxes = np.amax(m, axis=1, keepdims=True)
         e = np.exp(m - maxes)
         out[:] = e / np.sum(e, axis=1, keepdims=True)
+
+    def softmax_deriv_m(self, y, y_deltas, out):
+        # This works framewise, no sequences involved here, so we flatten.
+        # y_deltas is passed in and determined by the error function, 
+        # e.g. loss * (tgt/prob) for MCE, or something intricate for CTC
+        assert y_deltas.shape == y.shape
+        assert out.shape == y.shape
+
+        flat_y = y.reshape((-1,y.shape[-1]))
+        flat_y_deltas = y_deltas.reshape((-1,y_deltas.shape[-1]))
+        flat_out = out.reshape((-1,out.shape[-1]))
+
+        # the derivative is (citing PyLSTM):
+        # For i'th unit with input x_i, output y_i, and Error E from next layer
+        # dE/dx_i = y_i * (dE/dy_i - sum(dE/dy_j * y_j))
+
+        sum_term = np.sum(flat_y * flat_y_deltas,axis=1,keepdims=True)
+        flat_out[:] = flat_y * (flat_y_deltas - sum_term)
+
+    def calculate_ctc(self, probs, labels, out_deltas):
+        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels.astype(np.int64))
+        
+        out_deltas[:] = deltas
+        return error
 
     def tanh(self, x, y):
         np.tanh(x, y)
