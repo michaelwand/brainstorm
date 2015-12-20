@@ -6,6 +6,8 @@ import numpy as np
 
 from brainstorm.handlers.base_handler import Handler
 
+# for calculate_ctc
+import brainstorm.handlers._cpuop
 
 # ############################## Debug Array ################################ #
 
@@ -26,13 +28,27 @@ class DebugArray(object):
                 assert i.step is None
         return DebugArray(arr=self.array.__getitem__(item))
 
+    def __setitem__(self, item, value):
+        if isinstance(value,np.ndarray):
+            self.array[item] = value
+        else:
+            self.array[item] = value.array
+
     def reshape(self, new_shape):
         if isinstance(new_shape, (tuple, list)):
-            assert all([t >= 0 for t in tuple(new_shape)])
+            assert all([t >= -1 for t in tuple(new_shape)])
+            assert np.sum(np.where(new_shape == -1)) <= 1 # just one -1
         else:
             assert isinstance(new_shape, int)
-            assert new_shape >= 0
+            assert new_shape >= -1
         return DebugArray(arr=self.array.reshape(new_shape))
+
+    def astype(self,tp):
+        return DebugArray(arr=self.array.astype(tp))
+
+    @property
+    def dtype(self):
+        return self.array.dtype
 
 
 def _check_for_inf(handler, arg, name):
@@ -330,6 +346,7 @@ class DebugHandler(Handler):
 
     @check_for_inf_or_nan
     def get_final_zeros_index_v(self,v):
+        v = v.array # get underlying numpy aray
         for pos in xrange(v.shape[0] - 1,-1,-1):
             if v[pos] != 0:
                 return pos + 1
@@ -549,9 +566,9 @@ class DebugHandler(Handler):
         assert y_deltas.shape == y.shape
         assert out.shape == y.shape
 
-#         flattable_shape = reduce(lambda x,y: x*y,y.shape[0:-1])
-        flat_y = y.reshape((-1,y.shape[-1]))
-        flat_y_deltas = y_deltas.reshape((-1,y_deltas.shape[-1]))
+        # everything should be numpy array, except the output
+        flat_y = y.reshape((-1,y.shape[-1])).array
+        flat_y_deltas = y_deltas.reshape((-1,y_deltas.shape[-1])).array
         flat_out = out.reshape((-1,out.shape[-1]))
 
         # the derivative is (citing PyLSTM):
@@ -559,11 +576,16 @@ class DebugHandler(Handler):
         # dE/dx_i = y_i * (dE/dy_i - sum(dE/dy_j * y_j))
 
         sum_term = np.sum(flat_y * flat_y_deltas,axis=1,keepdims=True)
-        flat_out[:] = flat_y * (flat_y_deltas - sum_term)
+        flat_out[:] = DebugArray(flat_y * (flat_y_deltas - sum_term))
 
     @check_for_inf_or_nan
     def calculate_ctc(self, probs, labels, out_deltas):
-        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels.astype(np.int64))
+        probs_array = probs.array.copy()
+        labels_array = labels.array
+        print('Debug handler: passing arrays into calculate_ctc')
+        print('Probs: shape %s, flags %s' % (str(probs_array.shape),str(probs_array.flags)))
+        print('Labels: shape %s, flags %s' % (str(labels_array.shape),str(labels_array.flags)))
+        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs_array,labels_array.astype(np.int64))
         
         out_deltas[:] = deltas
         return error

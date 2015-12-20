@@ -10,6 +10,7 @@ from brainstorm.layers.base_layer import get_layer_class_from_typename
 from brainstorm.layers.batch_normalization_layer import BatchNormLayerImpl
 from brainstorm.layers.binomial_cross_entropy_layer import \
     BinomialCrossEntropyLayerImpl
+from brainstorm.layers.ctc_layer import CTCLayerImpl
 from brainstorm.layers.softmax_ce_layer import SoftmaxCELayerImpl
 from brainstorm.layers.sigmoid_ce_layer import SigmoidCELayerImpl
 from brainstorm.layers.convolution_layer_2d import Convolution2DLayerImpl
@@ -134,6 +135,24 @@ def softmax_ce_layer(spec):
     spec['targets'] = targets
     return layer, spec
 
+def ctc_layer(spec):
+    spec['time_steps'] = 10 
+    spec['batch_size'] = 2
+    class_count = 4
+    feature_dim = (class_count + 1) # for blank
+    labels_shape = (spec['time_steps'], spec['batch_size'], 1)
+    labels = np.array([[1,3,4,4,3,0,0,0,0,0],[3,2,2,0,0,0,0,0,0,0]]).T[:,:,None]
+
+    in_shapes = {'default': BufferStructure('T', 'B', feature_dim),
+                 'labels': BufferStructure('T', 'B', 1)}
+
+    layer = CTCLayerImpl('CTCLayer', in_shapes, NO_CON,
+                               NO_CON)
+
+    spec['labels'] = labels
+    print('Call to ctc_layer w/ returing spec',spec)
+    return layer, spec
+
 
 def sigmoid_ce_layer(spec):
     time_steps = spec.get('time_steps', 3)
@@ -153,19 +172,19 @@ def sigmoid_ce_layer(spec):
 
 def rnn_layer(spec):
     layer = RecurrentLayerImpl('RnnLayer',
-                         {'default': BufferStructure('T', 'B', 3)},
-                         NO_CON, NO_CON,
-                         size=4,
-                         activation=spec['activation'])
+                               {'default': BufferStructure('T', 'B', 3)},
+                               NO_CON, NO_CON,
+                               size=4,
+                               activation=spec['activation'])
     return layer, spec
 
 
 def rnn_layer_2d(spec):
     layer = RecurrentLayerImpl('RnnLayer',
-                         {'default': BufferStructure('T', 'B', 2, 1, 2)},
-                         NO_CON, NO_CON,
-                         size=3,
-                         activation=spec['activation'])
+                               {'default': BufferStructure('T', 'B', 2, 1, 2)},
+                               NO_CON, NO_CON,
+                               size=3,
+                               activation=spec['activation'])
     return layer, spec
 
 
@@ -306,11 +325,12 @@ def clockwork_lstm_layer(spec):
 
 
 def clockwork_lstm_layer_2d(spec):
-    layer = ClockworkLstmLayerImpl('ClockworkLstm',
-                                   {'default': BufferStructure('T', 'B', 1, 2, 2)},
-                                   NO_CON, NO_CON,
-                                   size=3,
-                                   activation=spec['activation'])
+    layer = ClockworkLstmLayerImpl(
+        'ClockworkLstm',
+        {'default': BufferStructure('T', 'B', 1, 2, 2)},
+        NO_CON, NO_CON,
+        size=3,
+        activation=spec['activation'])
 
     spec['inits'] = {'timing': np.array([1, 2, 3])}
     return layer, spec
@@ -325,37 +345,38 @@ def merge(spec):
     return layer, spec
 
 layers_to_test = [
-    noop_layer,
-    loss_layer,
-    fully_connected_layer,
-    fully_connected_layer_2d,
-    highway_layer,
-    binomial_crossentropy_layer,
-    softmax_ce_layer,
-    sigmoid_ce_layer,
-    rnn_layer,
-    rnn_layer_2d,
-    squared_difference_layer,
-    squared_error_layer,
-    lstm_layer,
-    lstm_layer_2d,
-    mask_layer,
-    convolution_layer_2d_a,
-    convolution_layer_2d_b,
-    convolution_layer_2d_c,
-    convolution_layer_2d,
-    maxpooling_layer_2d,
-    avgpooling_layer_2d,
-    batch_norm_layer_fc,
-    batch_norm_layer_nhwc,
-    elementwise_layer,
-    l1_decay_layer,
-    l2_decay_layer,
-    clockwork_layer,
-    clockwork_layer_2d,
-    clockwork_lstm_layer,
-    clockwork_lstm_layer_2d,
-    merge
+#     noop_layer,
+#     loss_layer,
+#     fully_connected_layer,
+#     fully_connected_layer_2d,
+#     highway_layer,
+#     binomial_crossentropy_layer,
+    ctc_layer,
+#     softmax_ce_layer,
+#     sigmoid_ce_layer,
+#     rnn_layer,
+#     rnn_layer_2d,
+#     squared_difference_layer,
+#     squared_error_layer,
+#     lstm_layer,
+#     lstm_layer_2d,
+#     mask_layer,
+#     convolution_layer_2d_a,
+#     convolution_layer_2d_b,
+#     convolution_layer_2d_c,
+#     convolution_layer_2d,
+#     maxpooling_layer_2d,
+#     avgpooling_layer_2d,
+#     batch_norm_layer_fc,
+#     batch_norm_layer_nhwc,
+#     elementwise_layer,
+#     l1_decay_layer,
+#     l2_decay_layer,
+#     clockwork_layer,
+#     clockwork_layer_2d,
+#     clockwork_lstm_layer,
+#     clockwork_lstm_layer_2d,
+#     merge
 ]
 
 ids = [f.__name__ for f in layers_to_test]
@@ -482,7 +503,8 @@ def test_layer_backward_pass_insensitive_to_internal_state_init(layer_specs):
         for key, value in layer_buffers.input_deltas.items():
             assert np.allclose(deltas[key], HANDLER.get_numpy_copy(value),
                                rtol=eps, atol=eps), \
-                "Failed for internal.{} when inspecting {}".format(internal, key)
+                "Failed for internal.{} when inspecting {}".format(internal,
+                                                                   key)
 
 
 def test_layer_add_to_deltas(layer_specs):

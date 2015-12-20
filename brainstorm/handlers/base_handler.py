@@ -516,7 +516,14 @@ class Handler(Describable):
 
     @abc.abstractmethod
     def get_final_zeros_index_v(self,v):
-        """ TODO """
+        """Determine the lowest index after which v only contains (exact) zeros.
+
+        Args:
+            v (array_type): Vector to examine
+        Returns:
+            The index after which v only contains zeros, or len(v) if the last 
+            element of v is not zero.
+        """
 
     @abc.abstractmethod
     def index_m_by_v(self, m, v, out):

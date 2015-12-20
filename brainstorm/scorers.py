@@ -46,11 +46,6 @@ def gather_losses_and_scores(net, scorers, scores, out_name='',
         mask = net.get_input(sc.mask_name) if sc.mask_name\
             else (net.get_input(mask_name) if mask_name else None)
 
-        # TODO
-        # MWAND: not good
-#         predicted = _flatten_all_but_last(predicted)
-#         true_labels = _flatten_all_but_last(true_labels)
-#         mask = _flatten_all_but_last(mask)
         weight = mask.sum() if mask is not None else predicted.shape[0] * predicted.shape[1]
 
         # TODO a hack

@@ -15,6 +15,10 @@ from brainstorm.handlers.base_handler import Handler
 from brainstorm.randomness import global_rnd
 from brainstorm.utils import flatten_all_but_last
 
+# TODO this is for the current CPU implementation of CTC, until a GPU 
+# implementation becomes available
+import brainstorm.handlers._cpuop
+
 culinalg.init()
 NUM_CUDA_THREADS = 1024
 
@@ -285,7 +289,7 @@ class PyCudaHandler(Handler):
 
     def get_final_zeros_index_v(self,v):
         for pos in xrange(v.shape[0] - 1,-1,-1):
-            if v[pos] != 0:
+            if v[pos].get() != 0:
                 return pos + 1
 
         return 0
@@ -441,7 +445,7 @@ class PyCudaHandler(Handler):
         cpu_probs = self.get_numpy_copy(probs)
         cpu_labels = self.get_numpy_copy(labels).astype(np.int64)
 
-        (cpu_error,cpu_deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels)
+        (cpu_error,cpu_deltas) = brainstorm.handlers._cpuop.calculate_ctc(cpu_probs,cpu_labels)
         
         self.set_from_numpy(out_deltas,cpu_deltas)
         

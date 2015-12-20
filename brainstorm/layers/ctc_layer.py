@@ -32,6 +32,11 @@ def CTC(name=None):
     Consequently, the layer size passed to the function bs.tools.get_in_out_layers_for_ctc
     (if you create your system that way) must be # of classes + 1.
 
+    IMPORTANT WARNING:
+        This layer currently considers the input data mask to be boolean (i.e. no
+        weights are allowed), and it should have the form 1 ... 1 0 ... 0 (only the final
+        unbroken sequence of zeros is removed)
+
     WARNING:
         This layer does not compute derivatives wrt the 'targets' input.
         It also does not use the deltas coming in from the 'predictions'.
@@ -74,8 +79,9 @@ def levenshtein(seq1, seq2):
 class CTCLayerImpl(Layer):
 
     expected_inputs = {'default': StructureTemplate('T', 'B', 'F'),
-                       'mask': StructureTemplate('T', 'B', 1),
                        'labels': StructureTemplate('T', 'B', 1)}
+
+    optional_inputs = {'mask': StructureTemplate('T', 'B', 1)}
 
     computes_no_input_deltas_for = ['mask','labels']
     takes_no_output_deltas_from = ['predictions']
@@ -93,12 +99,48 @@ class CTCLayerImpl(Layer):
                                              is_backward_only=True)
         return outputs, OrderedDict(), internals 
 
+    # TODO this could become the standard implementation
+    def _validate_in_shapes(self):
+        """Ensure all in_shapes are valid by comparing to `expected_inputs`.
+
+        Raises:
+            LayerValidationError: if there are unrecognized inputs, missing
+                                  inputs or inputs that don't match the
+                                  `StructureTemplate` from `expected_inputs`.
+        """
+        in_shape_names = set(self.in_shapes.keys())
+        input_names = set(self.expected_inputs.keys())
+        optional_input_names = set(self.optional_inputs.keys())
+
+        all_inputs = self.expected_inputs.copy()
+        all_inputs.update(self.optional_inputs)
+
+        if not in_shape_names.issubset(input_names | optional_input_names):
+            raise LayerValidationError(
+                'Invalid in_shapes. {} has no input(s) named "{}". Choices '
+                'are: {}'.format(self.name, in_shape_names - input_names,
+                                 input_names))
+
+        if not input_names.issubset(in_shape_names):
+            raise LayerValidationError(
+                '{}: All required inputs need to be connected. Missing {}.'
+                .format(self.name, input_names - in_shape_names))
+
+        for input_name, in_shape in self.in_shapes.items():
+            if not all_inputs[input_name].matches(in_shape):
+                raise LayerValidationError(
+                    "{}: in_shape ({}) for {} doesn't match StructureTemplate "
+                    "{}".format(self.name, in_shape, input_name,all_inputs[input_name]))
+
     def forward_pass(self, buffers, training_pass=True):
         # prepare
         _h = self.handler
         inputs = buffers.inputs.default
         labels = buffers.inputs.labels
-        mask = buffers.inputs.mask
+        if 'mask' in buffers.inputs.keys():
+            mask = buffers.inputs.mask
+        else:
+            mask = None
         predictions = buffers.outputs.predictions
         loss = buffers.outputs.loss
 
@@ -117,8 +159,14 @@ class CTCLayerImpl(Layer):
         # for being used in the backward pass.
         # All this is performed sequence-wise and currently does not parallelize.
         for sequence in xrange(inputs.shape[1]):
-            this_mask = mask[:,sequence,0].astype(bool) # TODO: astype OK?
-            these_predictions = predictions[this_mask,sequence,:]
+            if mask is not None:
+                this_mask = mask[:,sequence,0].astype(int) # TODO: astype OK?
+                mask_zero_index = _h.get_final_zeros_index_v(this_mask) 
+#                 these_predictions = predictions[this_mask,sequence,:]
+                these_predictions = predictions[0:mask_zero_index,sequence,:]
+            else:
+                these_predictions = predictions[:,sequence,:]
+
             these_uncut_labels = labels[:,sequence,0].astype(np.int64)
 
             final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
@@ -126,10 +174,16 @@ class CTCLayerImpl(Layer):
 
             these_deltas = _h.allocate(these_predictions.shape)
             this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas)
-            _h.mult_st(-1, these_deltas, these_deltas) # fold - into calculate_ctc?
+            _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
 
-            loss[sequence,0] = this_error
-            temp_dinputs[this_mask.astype(bool),sequence,:] = these_deltas
+            # TODO annoying: single float no work on GPU
+            loss[sequence,0] = np.array(this_error,dtype=loss.dtype)
+
+            if mask is not None:
+#                 temp_dinputs[this_mask.astype(bool),sequence,:] = these_deltas
+                temp_dinputs[0:mask_zero_index,sequence,:] = these_deltas
+            else:
+                temp_dinputs[:,sequence,:] = these_deltas
 
     def backward_pass(self, buffers):
         # prepare
