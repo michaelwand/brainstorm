@@ -50,10 +50,14 @@ class build_ext(_build_ext):
 # Cythonize pyx if possible, else compile C
 if use_cython:
     from Cython.Build import cythonize
-    extensions = cythonize([Extension('brainstorm.handlers._cpuop',
-                                      ['brainstorm/handlers/_cpuop.pyx'])])
+    extensions = cythonize([
+        Extension('brainstorm.handlers._cpuop', ['brainstorm/handlers/_cpuop.pyx']),
+        Extension('brainstorm._lm', ['brainstorm/_lm.pyx'])
+        ])
 
 else:
+    # TODO FIXME
+    raise Exception('unused?')
     extensions = [
         Extension(
             'brainstorm.handlers._cpuop', ['brainstorm/handlers/_cpuop.c'],
