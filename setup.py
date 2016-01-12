@@ -52,7 +52,8 @@ if use_cython:
     from Cython.Build import cythonize
     extensions = cythonize([
         Extension('brainstorm.handlers._cpuop', ['brainstorm/handlers/_cpuop.pyx']),
-        Extension('brainstorm._lm', ['brainstorm/_lm.pyx'])
+        Extension('brainstorm._lm', ['brainstorm/_lm.pyx']),
+        Extension('brainstorm.layers._search', ['brainstorm/layers/_search.pyx'])
         ])
 
 else:

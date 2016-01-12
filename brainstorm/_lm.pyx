@@ -51,7 +51,7 @@ class LanguageModelStatsException(Exception):
 
 # Node of the LM tree (TODO add documentation)
 # there is a root node with empty fields, using for easy traversing
-cdef class LanguageModelTreeNode(object):
+cdef class LanguageModelTreeNode:
     cdef dict children
     cdef str token
     cdef double score
@@ -68,7 +68,7 @@ cdef class LanguageModelTreeNode(object):
             self.score = score
             self.backoff = backoff
 
-    def addChild(self,childNode):
+    cdef addChild(self,LanguageModelTreeNode childNode):
         assert childNode.token not in self.children.keys()
         self.children[childNode.token] = childNode
 
@@ -120,21 +120,28 @@ cdef class LanguageModelTreeNode(object):
                 return (self,startDepth)
 
 # N-gram language model, currently working with ARPA n-gram format files
-class LanguageModel(object):
-    # Initialize by reading an LM file and building a tree. tokenMapper may map tokens to numerical IDs
-    def __init__(self,lmFile,maxN = None,tokenMapper = None):
-        # the data structures of this class 
+cdef class LanguageModel(object):
+    cdef LanguageModelTreeNode lmTree
+    cdef int maxN
+    # Initialize by reading an LM from a file object or a string and building a tree. 
+    def __init__(self,lmSource,maxN = None):
+        # possibly open file
+        if isinstance(lmSource, basestring):
+            lmIter = iter(lmSource.split('\n'))
+        else:
+            lmIter = lmSource
+
         self.lmTree = LanguageModelTreeNode()
-        self.tokenMapper = tokenMapper
 
         headerRead = False
 
-        lmFid = open(lmFile)
+#         lmFid = open(lmFile)
         # parse, looking for the markers \data\, \x-grams:, and \end\
         while True:
-            line = lmFid.readline()
-            if len(line) == 0:
-                    raise LanguageModelFileFormatException('Reached end of file without \\end\\ marker')
+            line = lmIter.next()
+            print('Read line ---%s---' % line)
+#             if len(line) == 0:
+#                     raise LanguageModelFileFormatException('Reached end of file without \\end\\ marker')
             if line.isspace():
                 continue
             if re.match(r'\\data\\',line):
@@ -142,7 +149,7 @@ class LanguageModel(object):
                     raise LanguageModelFileFormatException('Duplicate \\data\\ part')
                 headerRead = True
 
-                nGramCounts = self.readHeaderPart(lmFid)
+                nGramCounts = self.readHeaderPart(lmIter)
                 nGramsRead = { x:False for x in nGramCounts.keys() }
             elif re.match(r'\\[0-9]-grams:',line):
                 if not headerRead:
@@ -152,24 +159,24 @@ class LanguageModel(object):
                     raise LanguageModelFileFormatException('No count given for %d-grams' % n)
                 if nGramsRead[n]:
                     raise LanguageModelFileFormatException('Double %d-gram part' % n)
-                self.readNGramPart(lmFid,n,nGramCounts[n])
+                self.readNGramPart(lmIter,n,nGramCounts[n])
                 nGramsRead[n] = True
             elif re.match(r'\\end\\',line):
+                print('Mathcing end')
                 if not headerRead or any([ not x for x in nGramsRead.values()]):
                     raise LanguageModelFileFormatException('NGram part reached, but no header found yet')
                 break
-        lmFid.close()
+#         lmFid.close()
         
         if maxN is not None:
             self.maxN = min(self.maxN,maxN)
 
-
         
     # read the header of an LM file, returning the number of x-grams as a dictionary
-    def readHeaderPart(self,lmFid):
+    cdef readHeaderPart(self,lmIter):
         result = {}
         while True:
-            line = lmFid.readline()
+            line = lmIter.next()
             if re.match(r'^\s*$',line):
                 self.maxN = max(result.keys())
                 return result
@@ -178,44 +185,63 @@ class LanguageModel(object):
                 result[int(match.groups()[0])] = int(match.groups()[1])
 
     # read an n-gram definition part
-    def readNGramPart(self,lmFid,n,totalCount):
+    cdef bint readNGramPart(self,lmIter,int n,int totalCount) except False:
+        cdef str template
+        cdef int count
+        cdef str line
+        cdef int i
+
+        cdef list seqData
+        cdef LanguageModelTreeNode parentNode
+        cdef LanguageModelTreeNode newNode
+
         template = r'([-.0-9]+)'
         template += '('
         for i in range(n):
             template += r'\s+\S+'
         template += ')'
-        template += r'\s*(\s[-.0-9]+)?\s+' # backoff?
+        template += r'\s*(\s[-.0-9]+)?\s*$' # backoff?
 
         count = 0
         while True: # note that the counting makes this loop finite
-            line = lmFid.readline()
+            line = lmIter.next()
             if count == totalCount:
                 if  len(line) == 0 or line.isspace():
-                    return
+                    return True
                 else:
                     raise LanguageModelFileFormatException('%d-gram part: %d ngrams read, expecting empty line' % (n,count))
             else:
+                
+
                 match = re.match(template,line)
                 if not match:
-                    raise LanguageModelFileFormatException('%d-gram part: line %s does not match template' % (n,line))
+                    raise LanguageModelFileFormatException('%d-gram part: line %s does not match template %s' % (n,line,template))
                 # add to LM tree
                 (score,sequence,backoff) = match.groups()
-                score = float(score)
+                print('READ %s - %s' % (line,str((score,sequence,backoff))))
+                float_score = float(score)
                 if backoff is not None:
-                    backoff = float(backoff)
+                    float_backoff = float(backoff)
+
                 seqData = sequence.split()
-                if self.tokenMapper is not None:
-                    seqData = map(self.tokenMapper,seqData)
+#                 if self.tokenMapper is not None:
+#                     seqData = map(self.tokenMapper,seqData)
 
                 parentNode = self.lmTree.traverse(seqData[0:-1])
-                newNode = LanguageModelTreeNode(seqData[-1],score,backoff)
+                newNode = LanguageModelTreeNode(seqData[-1],float_score,float_backoff)
                 parentNode.addChild(newNode)
             count += 1
 
 
     # compute the probability of a sequence "a b c" (c is the current word, "a b" is the history)
     # see above for the rule
-    def computeProbability(self,seq):
+    def computeProbability(self, seq):
+        cdef int startPos
+        cdef float highestBackoff
+        cdef LanguageModelTreeNode highestBackoffNode
+        cdef LanguageModelTreeNode lastNode
+        cdef int depth
+
         assert len(seq) >= 1
         seq = seq[max(len(seq) - self.maxN,0):len(seq)]
 
@@ -242,7 +268,8 @@ class LanguageModel(object):
 
         # now check for maxN-gram
         try:
-            return highestBackoffNode.children[seq[-1]].score
+            lastNode = highestBackoffNode.children[seq[-1]]
+            return lastNode.score
         except KeyError:
             # OK, so we have to back off with a suitable subsequence given by the highest backoff
             seq = seq[startPos:]
@@ -280,20 +307,20 @@ class LanguageModel(object):
 #                 return res
 #         assert False # should not reach this - TODO should be a true exception
 
-    # traverse the tree recursively along the history
-    # assumes that all unigrams have a score (TODO?)
-    # history is first ... last, and if this is a normal node, the 
-    # "current" token (self.token) is not included in the history
-    def traverseTree(self,history):
-        if self.token is None:
-            # starting
-            thisUnigramNode = self.children[history[-1]]
-            return thisUnigramNode.getScore(history[0:-1])
-        else:
-            try:
-                nextNode = self.children[history[-1]]
-                return nextNode.getScore(history[0:-1])
-            except KeyError:
-                # back off
-                return self.score 
-
+#     # traverse the tree recursively along the history
+#     # assumes that all unigrams have a score (TODO?)
+#     # history is first ... last, and if this is a normal node, the 
+#     # "current" token (self.token) is not included in the history
+#     def traverseTree(self,history):
+#         if self.token is None:
+#             # starting
+#             thisUnigramNode = self.children[history[-1]]
+#             return thisUnigramNode.getScore(history[0:-1])
+#         else:
+#             try:
+#                 nextNode = self.children[history[-1]]
+#                 return nextNode.getScore(history[0:-1])
+#             except KeyError:
+#                 # back off
+#                 return self.score 
+# 

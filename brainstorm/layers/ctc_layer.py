@@ -10,6 +10,8 @@ from brainstorm.structure.buffer_structure import (BufferStructure,
 from brainstorm.structure.construction import ConstructionWrapper
 from brainstorm.utils import (LayerValidationError, flatten_all_but_last)
 
+# from brainstorm.layers._search import RunTreeSearch
+
 import sys
 
 import numpy as np
