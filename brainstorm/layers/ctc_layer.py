@@ -10,8 +10,6 @@ from brainstorm.structure.buffer_structure import (BufferStructure,
 from brainstorm.structure.construction import ConstructionWrapper
 from brainstorm.utils import (LayerValidationError, flatten_all_but_last)
 
-# from brainstorm.layers._search import RunTreeSearch
-
 import sys
 
 import numpy as np
@@ -45,21 +43,22 @@ def CTC(name=None):
     """
     return ConstructionWrapper.create(CTCLayerImpl, name=name)
 
-def ctc_greedy_decoding(ctc_prediction):
-    assert ctc_prediction.ndim == 2 # no multibatch
-    ctc_max = ctc_prediction.argmax(axis=1)
+# "invert" means that the path with smallest values through ctc_probabilities is found
+def ctc_greedy_decoding(ctc_probabilities,invert = False):
+    assert ctc_probabilities.ndim == 2 # no multibatch
+    ctc_prediction = ctc_probabilities.argmax(axis=1) if not invert else ctc_probabilities.argmin(axis=1)
 
     result = []
     last_was_blank = True # also for start
-    for pos in range(ctc_max.shape[0]):
-        if last_was_blank and ctc_max[pos] != 0:
-            result.append(ctc_max[pos])
+    for pos in range(ctc_prediction.shape[0]):
+        if last_was_blank and ctc_prediction[pos] != 0:
+            result.append(ctc_prediction[pos])
             last_was_blank = False
         elif last_was_blank is False:
-            if ctc_max[pos] == 0:
+            if ctc_prediction[pos] == 0:
                 last_was_blank = True
-            elif ctc_max[pos] != result[-1]:
-                result.append(ctc_max[pos])
+            elif ctc_prediction[pos] != result[-1]:
+                result.append(ctc_prediction[pos])
     return result 
 
     

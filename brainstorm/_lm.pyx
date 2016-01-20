@@ -123,8 +123,10 @@ cdef class LanguageModelTreeNode:
 cdef class LanguageModel(object):
     cdef LanguageModelTreeNode lmTree
     cdef int maxN
+    cdef list ignoredTokens
+
     # Initialize by reading an LM from a file object or a string and building a tree. 
-    def __init__(self,lmSource,maxN = None):
+    def __init__(self,lmSource,ignoredTokens = [],maxN = None):
         # possibly open file
         if isinstance(lmSource, basestring):
             lmIter = iter(lmSource.split('\n'))
@@ -132,6 +134,7 @@ cdef class LanguageModel(object):
             lmIter = lmSource
 
         self.lmTree = LanguageModelTreeNode()
+        self.ignoredTokens = ignoredTokens
 
         headerRead = False
 
@@ -139,7 +142,7 @@ cdef class LanguageModel(object):
         # parse, looking for the markers \data\, \x-grams:, and \end\
         while True:
             line = lmIter.next()
-            print('Read line ---%s---' % line)
+#             print('Read line ---%s---' % line)
 #             if len(line) == 0:
 #                     raise LanguageModelFileFormatException('Reached end of file without \\end\\ marker')
             if line.isspace():
@@ -162,7 +165,7 @@ cdef class LanguageModel(object):
                 self.readNGramPart(lmIter,n,nGramCounts[n])
                 nGramsRead[n] = True
             elif re.match(r'\\end\\',line):
-                print('Mathcing end')
+#                 print('Mathcing end')
                 if not headerRead or any([ not x for x in nGramsRead.values()]):
                     raise LanguageModelFileFormatException('NGram part reached, but no header found yet')
                 break
@@ -195,12 +198,12 @@ cdef class LanguageModel(object):
         cdef LanguageModelTreeNode parentNode
         cdef LanguageModelTreeNode newNode
 
-        template = r'([-.0-9]+)'
+        template = r'([-.0-9e]+)'
         template += '('
         for i in range(n):
             template += r'\s+\S+'
         template += ')'
-        template += r'\s*(\s[-.0-9]+)?\s*$' # backoff?
+        template += r'\s*(\s[-.0-9e]+)?\s*$' # backoff?
 
         count = 0
         while True: # note that the counting makes this loop finite
@@ -218,7 +221,7 @@ cdef class LanguageModel(object):
                     raise LanguageModelFileFormatException('%d-gram part: line %s does not match template %s' % (n,line,template))
                 # add to LM tree
                 (score,sequence,backoff) = match.groups()
-                print('READ %s - %s' % (line,str((score,sequence,backoff))))
+#                 print('READ %s - %s' % (line,str((score,sequence,backoff))))
                 float_score = float(score)
                 if backoff is not None:
                     float_backoff = float(backoff)
@@ -241,20 +244,25 @@ cdef class LanguageModel(object):
         cdef LanguageModelTreeNode highestBackoffNode
         cdef LanguageModelTreeNode lastNode
         cdef int depth
+        cdef list flt_seq
 
-        assert len(seq) >= 1
-        seq = seq[max(len(seq) - self.maxN,0):len(seq)]
+        # filter out tokens
+        flt_seq = [ x for x in seq if x not in self.ignoredTokens ]
+        if len(flt_seq) == 0:
+            return 0.0
+
+        flt_seq = flt_seq[max(len(flt_seq) - self.maxN,0):len(flt_seq)]
 
         # if this is more than an unigram, first find highest backoff
 
-        if len(seq) == 1:
+        if len(flt_seq) == 1:
             highestBackoffNode = self.lmTree
             highestBackoff = 0.0
             startPos = 0
         else:
-            for startPos in range(len(seq) - 1):
+            for startPos in range(len(flt_seq) - 1):
                 try:
-                    highestBackoffNode = self.lmTree.traverse(seq[startPos:-1])
+                    highestBackoffNode = self.lmTree.traverse(flt_seq[startPos:-1])
                 except LanguageModelStatsException:
                     pass
                 else:
@@ -264,29 +272,30 @@ cdef class LanguageModel(object):
                     assert highestBackoff is not None
                     break
             else:
-                raise LanguageModelStatsException('computeProbability: unigram %s not found' % seq[-1])
+                raise LanguageModelStatsException('computeProbability: unigram %s not found' % flt_seq[-1])
 
         # now check for maxN-gram
         try:
-            lastNode = highestBackoffNode.children[seq[-1]]
+            lastNode = highestBackoffNode.children[flt_seq[-1]]
             return lastNode.score
         except KeyError:
             # OK, so we have to back off with a suitable subsequence given by the highest backoff
-            seq = seq[startPos:]
+            flt_seq = flt_seq[startPos:]
             accumulatedBackoff = highestBackoff
-            oldSeq = seq[:] # copy
-            while len(seq) > 0:
-                # we don't find the n-gram for seq, of course
-                assert self.lmTree.traversePartly(seq,0)[1] < len(seq)
+            oldSeq = flt_seq[:] # copy
+            while len(flt_seq) > 0:
+                # we don't find the n-gram for flt_seq, of course
+                assert self.lmTree.traversePartly(flt_seq,0)[1] < len(flt_seq)
                 # so go one shorter
-                seq = seq[1:]
-                (lastNode,depth) = self.lmTree.traversePartly(seq)
-                if depth < len(seq) - 1:
+                flt_seq = flt_seq[1:]
+#                 print('Call to traversePartly(%s)' % str(flt_seq))
+                (lastNode,depth) = self.lmTree.traversePartly(flt_seq)
+                if depth < len(flt_seq) - 1:
                     # because of the previous search for highestBackoff, we don't expect this
-                    raise LanguageModelStatsException('computeProbability: %s found in LM, but sub-sequence %s not found' % (oldSeq,seq))
-                if depth == len(seq):
+                    raise LanguageModelStatsException('computeProbability: %s found in LM, but sub-sequence %s not found' % (oldSeq,flt_seq))
+                if depth == len(flt_seq):
                     # found
-                    assert lastNode.token is not None
+                    assert lastNode.token is not None, 'LM for sequence %s: weird error' % seq
                     try:
                         res = lastNode.score + accumulatedBackoff
                     except TypeError as e:

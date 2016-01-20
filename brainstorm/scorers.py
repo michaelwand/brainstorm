@@ -8,7 +8,10 @@ import numpy as np
 
 from brainstorm.describable import Describable
 
+# TODO
 from brainstorm.layers.ctc_layer import ctc_greedy_decoding, ctc_token_passing_decoding, levenshtein
+
+from brainstorm.layers.search import SearchTree
 
 # ----------------------------- Base Class ---------------------------------- #
 
@@ -168,6 +171,76 @@ class LabelingError(Scorer):
 
     # should be able to use standard aggregate method
 
+class DictionaryError(Scorer):
+    def __init__(self, out_name='', targets_name='labels', mask_name='',phone_list=None,
+            vocabulary=None,word_id_mapper=None,dictionary=None,language_model=None,beams=None,name=None):
+        super(DictionaryError, self).__init__(out_name, targets_name, mask_name, name)
+        if phone_list is None:
+            raise Exception('Must pass phone_list (an iterable) to DictionaryError')
+        if dictionary is None:
+            raise Exception('Must pass dictionary (a dictionary) to DictionaryError')
+        if beams is None:
+            raise Exception('Must pass beams to DictionaryError')
+        if word_id_mapper is None:
+            raise Exception('Must pass word_id_mapper to DictionaryError')
+        if vocabulary is None:
+            vocabulary = dictionary.keys()
+
+        self.word_id_mapper = word_id_mapper 
+        self.search_tree = SearchTree(phone_list,vocabulary,dictionary,beams,language_model)
+
+
+    def __call__(self, true_labels, predicted, mask=None):
+        assert true_labels.ndim == 3
+        assert true_labels.shape[2] == 1
+
+        assert predicted.ndim == 3
+        assert true_labels.shape[1] == predicted.shape[1]
+
+        true_labels = true_labels.astype(int)
+        # TODO note: if this were framewise decoding, would maximize over ax2 of predicted here
+        # also note that we must apply the mask, and that true_labels will probably contain zeros (blanks)
+
+        errors = 0
+        total_length = 0
+
+        for sequence in range(true_labels.shape[1]):
+            if mask is not None:
+                this_mask = mask[:,sequence,0].astype(bool)
+                these_predictions = predicted[this_mask,sequence,:]
+            else:
+                these_predictions = predicted[:,sequence,:]
+
+            # TODO we use log10 because that fits the language model
+            these_predictions = np.log10(these_predictions)
+
+            # run decoding, type is required by cython implementation
+            self.search_tree.run_search(these_predictions.astype(np.double))
+            word_predictions = self.search_tree.trace_nbest()
+            print('Predicted words:')
+            for wp in word_predictions:
+                print('Score %f, text %s' % (wp[0],' '.join(wp[1])))
+            numeric_word_prediction = [ self.word_id_mapper(w) for w in word_predictions[0][1] ]
+
+            # compare to labels (with blanks removed)
+            these_true_labels = true_labels[:,sequence,0]
+            assert these_true_labels.ndim == 1
+            label_zeros = np.where(these_true_labels == 0)[0]
+
+            if np.any(label_zeros):
+                label_boundary = np.min(label_zeros)
+                # TODO whcih exception?
+                if not np.all(these_true_labels[label_boundary:] == 0): 
+                    raise Exception('Label with non-contiguous zeros passed to CTC')
+
+                these_true_labels = these_true_labels[0:label_boundary]
+
+# # # # #             print('CTC decoding: ',these_true_labels,' ---> ',ctc_prediction)
+            assert these_true_labels.ndim == 1
+            errors += levenshtein(numeric_word_prediction,these_true_labels.tolist())
+            total_length += len(these_true_labels)
+
+        return (total_length,errors) # total_length serves as weight for error aggregation
 
 
 

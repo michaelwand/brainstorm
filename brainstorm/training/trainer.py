@@ -71,12 +71,18 @@ class Trainer(Describable):
         """
         if self.verbose:
             print('\n\n', 10 * '- ', "Before Training", 10 * ' -')
-        assert set(training_data_iter.data_shapes.keys()) == set(
-            net.buffer.Input.outputs.keys()), \
+        assert set(training_data_iter.data_shapes.keys()).issuperset(set(
+            net.buffer.Input.outputs.keys())), \
             "The data names provided by the training data iterator {} do not "\
             "map to the network input names {}".format(
                 training_data_iter.data_shapes.keys(),
                 net.buffer.Input.outputs.keys())
+#         assert set(training_data_iter.data_shapes.keys()) == set(
+#             net.buffer.Input.outputs.keys()), \
+#             "The data names provided by the training data iterator {} do not "\
+#             "map to the network input names {}".format(
+#                 training_data_iter.data_shapes.keys(),
+#                 net.buffer.Input.outputs.keys())
         self.stepper.start(net)
         named_data_iters['training_data_iter'] = training_data_iter
         self._start_hooks(net, named_data_iters)

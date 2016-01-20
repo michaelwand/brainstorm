@@ -160,7 +160,7 @@ def extract_and_save(network, iter, buffer_names, file_name):
             f.create_dataset(buffer_name,data=extracted_data[buffer_name])
 
 def get_in_out_layers_for_ctc(in_shape,out_shape, data_name='default',
-                      label_name='labels', projection_name=None,
+                      targets_name='labels', extra_inputs = {}, projection_name=None,
                       outlayer_name=None, mask_name=None, use_conv=None):
     """
     Works like get_in_out_layers, just subtly different. 
@@ -180,8 +180,15 @@ def get_in_out_layers_for_ctc(in_shape,out_shape, data_name='default',
     outlayer_name = outlayer_name or 'Output'
     projection_name = projection_name or outlayer_name + '_projection'
 
-    proj_layer = layers.FullyConnected(out_shape, activation='linear',
-                                       name=projection_name)
+    if len(out_shape) == 1 or use_conv is False:
+        proj_layer = layers.FullyConnected(out_shape, activation='linear',
+                                           name=projection_name)
+    elif len(out_shape) == 3 or use_conv is True:
+        proj_layer = layers.Convolution2D(out_shape[-1], (1, 1),
+                                          activation='linear',
+                                          name=projection_name)
+#     proj_layer = layers.FullyConnected(out_shape, activation='linear',
+#                                        name=projection_name)
 
     out_layer = layers.CTC(name=outlayer_name)
 
@@ -189,24 +196,28 @@ def get_in_out_layers_for_ctc(in_shape,out_shape, data_name='default',
 
     # the mask (if present) is directly passed to CTC layer, without using a mask layer
     if mask_name is not None:
-        inp_layer = layers.Input(
-            out_shapes={data_name: ('T', 'B') + in_shape,
-                        label_name: ('T', 'B', 1),
-                        mask_name: ('T', 'B', 1)})
+        out_shape_dict = {data_name: ('T', 'B') + in_shape,
+                        targets_name: ('T', 'B', 1),
+                        mask_name: ('T', 'B', 1)} 
+        out_shape_dict.update(extra_inputs)
+        inp_layer = layers.Input(out_shapes=out_shape_dict)
     else:
-        inp_layer = layers.Input(
-            out_shapes={data_name: ('T', 'B') + in_shape,
-                        label_name: ('T', 'B', 1)})
+        out_shape_dict={data_name: ('T', 'B') + in_shape,
+                        targets_name: ('T', 'B', 1)}
+        out_shape_dict.update(extra_inputs)
+        inp_layer = layers.Input(out_shapes=out_shape_dict)
+                      
 
-    inp_layer - label_name >> 'labels' - out_layer
+    inp_layer - targets_name >> 'labels' - out_layer
     out_layer - 'loss' >> layers.Loss()
     if mask_name is not None:
         inp_layer - mask_name >> 'mask' - out_layer
 
     return inp_layer, proj_layer
 
+# TODO document extra_inputs
 def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
-                      targets_name='targets', projection_name=None,
+                      targets_name='targets', extra_inputs = {}, projection_name=None,
                       outlayer_name=None, mask_name=None, use_conv=None):
     """Prepare input and output layers for building a network.
 
@@ -218,6 +229,10 @@ def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
 
     An appropriate layer to compute the matching loss is connected, depending
     on the task_type:
+
+    ctc:
+    The projection layer is connected to a CTC layers (optionally, the input mask
+    is also fed into the CTC layer). (TODO add more description)
 
     classification:
     The projection layer is connected to a SoftmaxCE layer, which receives
@@ -273,6 +288,13 @@ def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
     Returns:
         tuple[Layer]
     """
+    
+    # ugly special case, TODO:
+    if task_type == 'ctc':
+        return get_in_out_layers_for_ctc(in_shape, out_shape, data_name,
+            targets_name, extra_inputs,projection_name, outlayer_name,mask_name,use_conv)
+
+    # no CTC here
     in_shape = (in_shape,) if isinstance(in_shape, int) else in_shape
     out_shape = (out_shape,) if isinstance(out_shape, int) else out_shape
     outlayer_name = outlayer_name or 'Output'
@@ -304,12 +326,18 @@ def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
     else:
         t_shape = out_shape
     if mask_name is None:
-        inp_layer = layers.Input(
-            out_shapes={data_name: ('T', 'B') + in_shape,
-                        targets_name: ('T', 'B') + t_shape})
+        out_shape_dict={data_name: ('T', 'B') + in_shape,
+                        targets_name: ('T', 'B') + t_shape}
+        out_shape_dict.update(extra_inputs)
+        inp_layer = layers.Input(out_shapes=out_shape_dict)
         inp_layer - targets_name >> 'targets' - out_layer
         out_layer - 'loss' >> layers.Loss()
     else:
+        out_shape_dict = {data_name: ('T', 'B') + in_shape,
+                        targets_name: ('T', 'B') + t_shape,
+                        mask_name: ('T', 'B', 1)} 
+        out_shape_dict.update(extra_inputs)
+        inp_layer = layers.Input(out_shapes=out_shape_dict)
         inp_layer = layers.Input(
             out_shapes={data_name: ('T', 'B') + in_shape,
                         targets_name: ('T', 'B') + t_shape,
@@ -509,7 +537,7 @@ def trynumber(a):
 
 
 def create_net_from_spec(task_type, in_shape, out_shape, spec,
-                         data_name='default', targets_name='targets',
+                         data_name='default', targets_name='targets', extra_inputs={},
                          mask_name=None, use_conv=None):
     """
     Create a complete network from a spec line like this "F50 F20 F50".
@@ -551,7 +579,7 @@ def create_net_from_spec(task_type, in_shape, out_shape, spec,
         The mnist_pi example can be expressed like this:
         >>> net = create_net_from_spec('classification', 784, 10,
         ...                            'D.2 F1200 D F1200 D')
-        The cifar10_cnn example can be shortened like this:
+        The cifcnn example can be shortened like this:
         >>> net = create_net_from_spec(
         ...    'classification', (3, 32, 32), 10,
         ...    'C32:5p2 P3s2 C32:5p2 P3s2 C64:5p2 P3s2 F64')
@@ -590,11 +618,11 @@ def create_net_from_spec(task_type, in_shape, out_shape, spec,
             fallback.
     """
     out_shape = (out_shape,) if isinstance(out_shape, int) else out_shape
+    if task_type not in ['classification', 'multi-label', 'ctc']:
+        raise ValueError('Unknown task type {}'.format(task_type))
     inp, outp = get_in_out_layers(task_type, in_shape, out_shape,
                                   data_name=data_name, mask_name=mask_name,
-                                  targets_name=targets_name, use_conv=use_conv)
-    if task_type not in ['classification', 'multi-label']:
-        raise ValueError('Unknown task type {}'.format(task_type))
+                                  targets_name=targets_name, extra_inputs=extra_inputs,use_conv=use_conv)
     output_name = 'Output.outputs.predictions'
 
     import re
