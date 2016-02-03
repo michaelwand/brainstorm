@@ -871,7 +871,7 @@ class Handler(Describable):
         """
 
     @abc.abstractmethod
-    def calculate_ctc(self, probs, labels, out_deltas):
+    def calculate_ctc(self, probs, labels, out_deltas, clip_ctc):
         """Compute the CTC error and deltas for a single sequence.
 
         probs is a 2d array of timesteps x softmax outputs, with any mask already applied.
@@ -882,6 +882,7 @@ class Handler(Describable):
             probs (array_type): Softmax predictions.
             labels (array_type): Labels for CTC.
             out_deltas (array_type): Output deltas.
+            clip_ctc (scalar): Probabilities will be bounded from below by this value
 
         Returns:
             The computed error, as a scalar.

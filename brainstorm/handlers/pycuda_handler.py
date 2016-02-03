@@ -440,12 +440,12 @@ class PyCudaHandler(Handler):
 
         self.mult_tt(flat_y,tmp,flat_out)
 
-    def calculate_ctc(self, probs, labels, out_deltas):
+    def calculate_ctc(self, probs, labels, out_deltas, clip_ctc):
         # TODO this is a CPU call
         cpu_probs = self.get_numpy_copy(probs)
         cpu_labels = self.get_numpy_copy(labels).astype(np.int64)
 
-        (cpu_error,cpu_deltas) = brainstorm.handlers._cpuop.calculate_ctc(cpu_probs,cpu_labels)
+        (cpu_error,cpu_deltas) = brainstorm.handlers._cpuop.calculate_ctc(cpu_probs,cpu_labels,clip_ctc)
         
         self.set_from_numpy(out_deltas,cpu_deltas)
         

@@ -10,6 +10,7 @@ from brainstorm.structure.buffer_structure import (BufferStructure,
 from brainstorm.structure.construction import ConstructionWrapper
 from brainstorm.utils import (LayerValidationError, flatten_all_but_last)
 
+import pdb # TODO
 import sys
 
 import numpy as np
@@ -90,6 +91,8 @@ class CTCLayerImpl(Layer):
     def setup(self, kwargs, in_shapes):
         in_shape = in_shapes['default'].feature_size
 
+        self.clip_ctc = kwargs.get('clip_ctc',np.float64(1e-20))
+
         outputs = OrderedDict()
         outputs['predictions'] = BufferStructure('T', 'B', in_shape)
         outputs['loss'] = BufferStructure('B', 1) 
@@ -168,14 +171,20 @@ class CTCLayerImpl(Layer):
             else:
                 these_predictions = predictions[:,sequence,:]
 
+            # TODO FIXME XXX
+#             if np.any(np.isnan(these_predictions)):
+#                 pdb.set_trace()
+
             these_uncut_labels = labels[:,sequence,0].astype(np.int64)
 
             final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
             these_cut_labels = these_uncut_labels[0:final_zero_index]
 
             these_deltas = _h.allocate(these_predictions.shape)
-            this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas)
+            this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
             _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
+
+#             print('CTC LAYER: deltas b/w %f and %f' % (np.min(these_deltas), np.max(these_deltas)))
 
             # TODO annoying: single float no work on GPU
             loss[sequence,0] = np.array(this_error,dtype=loss.dtype)

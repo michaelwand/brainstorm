@@ -98,11 +98,14 @@ cdef calculate_betas(np.ndarray[DTYPE_t, ndim=2] log_probs, np.ndarray[np.int64_
                     beta[t - 1,s] = np.logaddexp(beta[t - 1,s], beta[t,s+2] + log_probs[t,next_label]);
     return beta
 
-def calculate_ctc(np.ndarray[DTYPE_t, ndim=2] probs, np.ndarray[np.int64_t, ndim=1] labels):
+def calculate_ctc(np.ndarray[DTYPE_t, ndim=2] probs, np.ndarray[np.int64_t, ndim=1] labels, DTYPE_t clip_ctc):
     internal_type = probs.dtype
     assert probs.ndim == 2 # just one sequence
     assert 0 not in labels
-    assert np.all(probs >= 0.0)
+    assert not np.any(np.isnan(probs))
+#     print('Call to calculate_ctc: Minimu of probs is',np.min(probs))
+    probs[probs < clip_ctc] = clip_ctc
+#     assert np.all(probs >= 0.0)
     cdef int N = probs.shape[0]
     cdef int S = len(labels)
     cdef int Z = 2 * S + 1 # including blanks

@@ -319,8 +319,8 @@ class NumpyHandler(Handler):
         sum_term = np.sum(flat_y * flat_y_deltas,axis=1,keepdims=True)
         flat_out[:] = flat_y * (flat_y_deltas - sum_term)
 
-    def calculate_ctc(self, probs, labels, out_deltas):
-        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels.astype(np.int64))
+    def calculate_ctc(self, probs, labels, out_deltas, clip_ctc):
+        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs,labels.astype(np.int64),clip_ctc)
         
         out_deltas[:] = deltas
         return error

@@ -371,6 +371,7 @@ cdef class SearchTree:
                     new_history = history + (token,)
                     # note that score = negative of computeProbability
                     lm_score = 0.0 if self.language_model is None else -self.language_model.computeProbability(new_history)
+                    assert lm_score >= 0.0, 'Language model gave negative score %f to sequence %s' % (lm_score,str(new_history))
                     self._make_hypo_to_final(score + self.beams['lm_weight'] * lm_score + self.beams['token_insertion_penalty'],new_history,this_node_index)
             # otherwise just copy
             this_node.next_hypos.move_to(this_node.current_hypos) # clears out automatically
