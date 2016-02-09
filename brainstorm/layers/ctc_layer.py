@@ -143,9 +143,9 @@ class CTCLayerImpl(Layer):
         # prepare
         _h = self.handler
         inputs = buffers.inputs.default
-        labels = buffers.inputs.labels
+        labels = buffers.inputs.labels.astype(np.int32)
         if 'mask' in buffers.inputs.keys():
-            mask = buffers.inputs.mask
+            mask = buffers.inputs.mask.astype(int)
         else:
             mask = None
         predictions = buffers.outputs.predictions
@@ -168,7 +168,7 @@ class CTCLayerImpl(Layer):
         # All this is performed sequence-wise and currently does not parallelize.
         for sequence in xrange(inputs.shape[1]):
             if mask is not None:
-                this_mask = mask[:,sequence,0].astype(int) # TODO: astype OK?
+                this_mask = mask[:,sequence,0] # TODO: astype OK?
                 mask_zero_index = _h.get_final_zeros_index_v(this_mask) 
 
                 these_inputs = inputs[0:mask_zero_index,sequence,:]
@@ -177,7 +177,7 @@ class CTCLayerImpl(Layer):
                 these_inputs = inputs[:,sequence,:]
                 these_predictions = predictions[:,sequence,:]
 
-            these_uncut_labels = labels[:,sequence,0].astype(np.int32)
+            these_uncut_labels = labels[:,sequence,0]
 
             final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
             these_cut_labels = these_uncut_labels[0:final_zero_index]
@@ -187,10 +187,10 @@ class CTCLayerImpl(Layer):
                 # TODO might pass entire minibatch
                 # CPU <-> GPU argh
                 if self.labels_on_gpu:
-                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels,these_deltas)
+                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels,these_deltas,self.clip_ctc)
                 else:
                     these_cut_labels_cpu = _h.get_numpy_copy(these_cut_labels)
-                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas)
+                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas,self.clip_ctc)
             else:
                 this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
                 _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?

@@ -888,7 +888,7 @@ class Handler(Describable):
             The computed error, as a scalar.
         """
     @abc.abstractmethod
-    def calculate_warpctc(self, probs, labels, out_deltas):
+    def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
         """Compute the CTC error and deltas for a single sequence.
 
         probs is a 2d array of timesteps x softmax outputs, with any mask already applied.

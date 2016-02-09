@@ -460,7 +460,8 @@ class PyCudaHandler(Handler):
         return cpu_error
 
     # cpu_ctc_np(acts, act_lens, labels, label_lens)
-    def calculate_warpctc(self, probs, labels, out_deltas):
+    def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
+        probs[probs < clip_ctc] = clip_ctc
         # FIXME try to understand my own stupid assumptions
         assert labels.dtype == np.int32, 'Labels have Python type %s and data type %s' % (type(labels),str(labels.dtype))
         if isinstance(labels,pycuda.gpuarray.GPUArray):

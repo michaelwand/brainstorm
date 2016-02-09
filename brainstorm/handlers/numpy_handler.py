@@ -333,7 +333,8 @@ class NumpyHandler(Handler):
         return error
 
     # cpu_ctc_np(acts, act_lens, labels, label_lens)
-    def calculate_warpctc(self, probs, labels, out_deltas):
+    def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
+        probs[probs < clip_ctc] = clip_ctc
         (error,deltas) = ctc.cpu_ctc_np(probs[:,None,:],np.array([probs.shape[0]],dtype=np.int32),labels.astype(np.int32),np.array([labels.shape[0]],dtype=np.int32))
         
         assert out_deltas.flags['C_CONTIGUOUS']
