@@ -579,16 +579,20 @@ class DebugHandler(Handler):
         flat_out[:] = DebugArray(flat_y * (flat_y_deltas - sum_term))
 
     @check_for_inf_or_nan
-    def calculate_ctc(self, probs, labels, out_deltas):
+    def calculate_ctc(self, probs, labels, out_deltas, clip_ctc):
         probs_array = probs.array.copy()
         labels_array = labels.array
         print('Debug handler: passing arrays into calculate_ctc')
         print('Probs: shape %s, flags %s' % (str(probs_array.shape),str(probs_array.flags)))
         print('Labels: shape %s, flags %s' % (str(labels_array.shape),str(labels_array.flags)))
-        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs_array,labels_array.astype(np.int64))
+        (error,deltas) = brainstorm.handlers._cpuop.calculate_ctc(probs_array,labels_array.astype(np.int64),clip_ctc)
         
         out_deltas[:] = deltas
         return error
+
+    @check_for_inf_or_nan
+    def calculate_warpctc(self, probs, labels, out_deltas):
+        raise Exception('Not implemented')
 
 # ############################ Helper Methods ############################### #
 

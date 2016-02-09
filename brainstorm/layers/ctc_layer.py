@@ -92,6 +92,8 @@ class CTCLayerImpl(Layer):
         in_shape = in_shapes['default'].feature_size
 
         self.clip_ctc = kwargs.get('clip_ctc',np.float64(1e-20))
+        self.use_warpctc = kwargs.get('use_warpctc',False)
+        self.labels_on_gpu = kwargs.get('labels_on_gpu',False)
 
         outputs = OrderedDict()
         outputs['predictions'] = BufferStructure('T', 'B', in_shape)
@@ -99,6 +101,7 @@ class CTCLayerImpl(Layer):
 
         internals = OrderedDict()
         internals['temp_dinputs'] = BufferStructure('T', 'B', in_shape)
+        internals['temp_dinputs2'] = BufferStructure('T', 'B', in_shape) # FIXME
         internals['softmax_deriv'] = BufferStructure('T', 'B', in_shape,
                                              is_backward_only=True)
         return outputs, OrderedDict(), internals 
@@ -149,6 +152,7 @@ class CTCLayerImpl(Layer):
         loss = buffers.outputs.loss
 
         temp_dinputs = buffers.internals.temp_dinputs
+        temp_dinputs2 = buffers.internals.temp_dinputs2
 
         # reshape
         flat_inputs = flatten_all_but_last(inputs)
@@ -166,23 +170,30 @@ class CTCLayerImpl(Layer):
             if mask is not None:
                 this_mask = mask[:,sequence,0].astype(int) # TODO: astype OK?
                 mask_zero_index = _h.get_final_zeros_index_v(this_mask) 
-#                 these_predictions = predictions[this_mask,sequence,:]
+
+                these_inputs = inputs[0:mask_zero_index,sequence,:]
                 these_predictions = predictions[0:mask_zero_index,sequence,:]
             else:
+                these_inputs = inputs[:,sequence,:]
                 these_predictions = predictions[:,sequence,:]
 
-            # TODO FIXME XXX
-#             if np.any(np.isnan(these_predictions)):
-#                 pdb.set_trace()
-
-            these_uncut_labels = labels[:,sequence,0].astype(np.int64)
+            these_uncut_labels = labels[:,sequence,0].astype(np.int32)
 
             final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
             these_cut_labels = these_uncut_labels[0:final_zero_index]
 
             these_deltas = _h.allocate(these_predictions.shape)
-            this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
-            _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
+            if self.use_warpctc:
+                # TODO might pass entire minibatch
+                # CPU <-> GPU argh
+                if self.labels_on_gpu:
+                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels,these_deltas)
+                else:
+                    these_cut_labels_cpu = _h.get_numpy_copy(these_cut_labels)
+                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas)
+            else:
+                this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
+                _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
 
 #             print('CTC LAYER: deltas b/w %f and %f' % (np.min(these_deltas), np.max(these_deltas)))
 
@@ -190,7 +201,6 @@ class CTCLayerImpl(Layer):
             loss[sequence,0] = np.array(this_error,dtype=loss.dtype)
 
             if mask is not None:
-#                 temp_dinputs[this_mask.astype(bool),sequence,:] = these_deltas
                 temp_dinputs[0:mask_zero_index,sequence,:] = these_deltas
             else:
                 temp_dinputs[:,sequence,:] = these_deltas
@@ -213,7 +223,10 @@ class CTCLayerImpl(Layer):
         flat_temp_dinputs = flatten_all_but_last(temp_dinputs)
 
         # general softmax derivative
-        _h.softmax_deriv_m(flat_probs,flat_temp_dinputs,flat_softmax_deriv)
+        if self.use_warpctc:
+            _h.copy_to(flat_temp_dinputs,flat_softmax_deriv)
+        else:
+            _h.softmax_deriv_m(flat_probs,flat_temp_dinputs,flat_softmax_deriv)
 
         # Multiply with sequencewise loss.
         # Multiplication requires "manual broadcasting" so that it works with the PyCuda handler.

@@ -887,6 +887,22 @@ class Handler(Describable):
         Returns:
             The computed error, as a scalar.
         """
+    @abc.abstractmethod
+    def calculate_warpctc(self, probs, labels, out_deltas):
+        """Compute the CTC error and deltas for a single sequence.
+
+        probs is a 2d array of timesteps x softmax outputs, with any mask already applied.
+        labels is a 1d array which will be converted to integers and which must *not* 
+        contain zero elements - zeros refer to the 'blank' CTC node.
+
+        Args:
+            probs (array_type): Softmax predictions.
+            labels (array_type): Labels for CTC.
+            out_deltas (array_type): Output deltas.
+
+        Returns:
+            The computed error, as a scalar.
+        """
 
     @abc.abstractmethod
     def tanh(self, x, y):

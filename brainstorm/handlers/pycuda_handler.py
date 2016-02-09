@@ -15,6 +15,14 @@ from brainstorm.handlers.base_handler import Handler
 from brainstorm.randomness import global_rnd
 from brainstorm.utils import flatten_all_but_last
 
+# FIXME
+import sys
+import os
+if 'WARP_CTC_PATH' in os.environ:
+    sys.path.insert(1,os.environ['WARP_CTC_PATH'])
+
+import ctc
+
 # TODO this is for the current CPU implementation of CTC, until a GPU 
 # implementation becomes available
 import brainstorm.handlers._cpuop
@@ -450,6 +458,36 @@ class PyCudaHandler(Handler):
         self.set_from_numpy(out_deltas,cpu_deltas)
         
         return cpu_error
+
+    # cpu_ctc_np(acts, act_lens, labels, label_lens)
+    def calculate_warpctc(self, probs, labels, out_deltas):
+        # FIXME try to understand my own stupid assumptions
+        assert labels.dtype == np.int32, 'Labels have Python type %s and data type %s' % (type(labels),str(labels.dtype))
+        if isinstance(labels,pycuda.gpuarray.GPUArray):
+            labels_on_gpu = True
+        else:
+            labels_on_gpu = False
+
+        assert isinstance(probs,pycuda.gpuarray.GPUArray)
+        assert probs.dtype == np.float32
+        
+        assert probs.ndim == 2
+        reshaped_probs = probs.reshape((probs.shape[0],1,probs.shape[1]))
+        assert out_deltas.shape == probs.shape
+        reshaped_out_deltas = out_deltas.reshape((probs.shape[0],1,probs.shape[1]))
+        assert long(reshaped_out_deltas.gpudata) == long(out_deltas.gpudata)
+
+        if labels_on_gpu:
+            error = ctc.gpu_ctc_pycuda_gpulabels(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
+                    reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
+        else:
+            error = ctc.gpu_ctc_pycuda(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
+                    reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
+            
+#         assert out_deltas.flags['C_CONTIGUOUS']
+#         assert deltas.flags['C_CONTIGUOUS']
+#         out_deltas[:] = deltas[:,0,:]
+        return error[0]
 
     def tanh(self, x, y):
         tanh_kernel(x, y)

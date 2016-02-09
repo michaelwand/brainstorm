@@ -8,6 +8,13 @@ import brainstorm.handlers._cpuop
 from brainstorm.handlers.base_handler import Handler
 from brainstorm.randomness import global_rnd
 
+# FIXME
+import sys
+import os
+if 'WARP_CTC_PATH' in os.environ:
+    sys.path.insert(1,os.environ['WARP_CTC_PATH'])
+
+import ctc
 
 # noinspection PyMethodMayBeStatic
 class NumpyHandler(Handler):
@@ -324,6 +331,15 @@ class NumpyHandler(Handler):
         
         out_deltas[:] = deltas
         return error
+
+    # cpu_ctc_np(acts, act_lens, labels, label_lens)
+    def calculate_warpctc(self, probs, labels, out_deltas):
+        (error,deltas) = ctc.cpu_ctc_np(probs[:,None,:],np.array([probs.shape[0]],dtype=np.int32),labels.astype(np.int32),np.array([labels.shape[0]],dtype=np.int32))
+        
+        assert out_deltas.flags['C_CONTIGUOUS']
+        assert deltas.flags['C_CONTIGUOUS']
+        out_deltas[:] = deltas[:,0,:]
+        return error[0]
 
     def tanh(self, x, y):
         np.tanh(x, y)
