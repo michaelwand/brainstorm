@@ -152,14 +152,14 @@ class CTCLayerImpl(Layer):
         loss = buffers.outputs.loss
 
         temp_dinputs = buffers.internals.temp_dinputs
-        temp_dinputs2 = buffers.internals.temp_dinputs2
+#         temp_dinputs2 = buffers.internals.temp_dinputs2
 
         # reshape
         flat_inputs = flatten_all_but_last(inputs)
-        flat_probs = flatten_all_but_last(predictions)
+        flat_predictions = flatten_all_but_last(predictions)
 
         # softmax
-        _h.softmax_m(flat_inputs, flat_probs)
+        _h.softmax_m(flat_inputs, flat_predictions)
 
         # At this point, softmax is computed, and CTC code begins.
         # The variable predictions has already been correctly filled
@@ -183,6 +183,7 @@ class CTCLayerImpl(Layer):
             these_cut_labels = these_uncut_labels[0:final_zero_index]
 
             these_deltas = _h.allocate(these_predictions.shape)
+#             these_deltas2 = _h.allocate(these_predictions.shape)
             if self.use_warpctc:
                 # TODO might pass entire minibatch
                 # CPU <-> GPU argh
@@ -191,6 +192,7 @@ class CTCLayerImpl(Layer):
                 else:
                     these_cut_labels_cpu = _h.get_numpy_copy(these_cut_labels)
                     this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas,self.clip_ctc)
+#                     this_error2 = _h.calculate_ctc(these_predictions,these_cut_labels_cpu,these_deltas2,self.clip_ctc)
             else:
                 this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
                 _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
@@ -201,32 +203,44 @@ class CTCLayerImpl(Layer):
             loss[sequence,0] = np.array(this_error,dtype=loss.dtype)
 
             if mask is not None:
+                print('Temp_dinputs BEFORE is max %f' % np.max(abs(temp_dinputs[:,sequence,:].get())))
+                if np.max(abs(temp_dinputs[:,sequence,:].get())) > 0.001:
+                    pass
                 temp_dinputs[0:mask_zero_index,sequence,:] = these_deltas
+#                 temp_dinputs2[0:mask_zero_index,sequence,:] = these_deltas2
+                _h.fill(temp_dinputs[mask_zero_index:,sequence,:],0)
+#                 temp_dinputs2[mask_zero_index:,sequence,:] = 0
             else:
                 temp_dinputs[:,sequence,:] = these_deltas
+#                 temp_dinputs2[:,sequence,:] = these_deltas2
 
     def backward_pass(self, buffers):
         # prepare
         _h = self.handler
-        probs = buffers.outputs.predictions
+        predictions = buffers.outputs.predictions
 
         dinputs = buffers.input_deltas.default
         dloss = buffers.output_deltas.loss
         temp_dinputs = buffers.internals.temp_dinputs
+#         temp_dinputs2 = buffers.internals.temp_dinputs2
         softmax_deriv = buffers.internals.softmax_deriv
+#         softmax_deriv2 = np.empty_like(softmax_deriv)
 
         # reshape
-        flat_probs = flatten_all_but_last(probs)
+        flat_predictions = flatten_all_but_last(predictions)
         flat_softmax_deriv = flatten_all_but_last(softmax_deriv)
+#         flat_softmax_deriv2 = flatten_all_but_last(softmax_deriv2)
         flat_dloss = flatten_all_but_last(dloss)
         flat_dinputs = flatten_all_but_last(dinputs)
         flat_temp_dinputs = flatten_all_but_last(temp_dinputs)
+#         flat_temp_dinputs2 = flatten_all_but_last(temp_dinputs2)
 
         # general softmax derivative
         if self.use_warpctc:
             _h.copy_to(flat_temp_dinputs,flat_softmax_deriv)
+#             _h.softmax_deriv_m(flat_predictions,flat_temp_dinputs2,flat_softmax_deriv2)
         else:
-            _h.softmax_deriv_m(flat_probs,flat_temp_dinputs,flat_softmax_deriv)
+            _h.softmax_deriv_m(flat_predictions,flat_temp_dinputs,flat_softmax_deriv)
 
         # Multiply with sequencewise loss.
         # Multiplication requires "manual broadcasting" so that it works with the PyCuda handler.
@@ -236,5 +250,7 @@ class CTCLayerImpl(Layer):
 
         _h.add_tt(flat_softmax_deriv, flat_dinputs, flat_dinputs)
 
+#         print('CTC LAYER BACKWARD: SM between %f and %f, dinputs between %f and %f' % 
+#                 (np.min(flat_softmax_deriv),np.max(flat_softmax_deriv),np.min(flat_dinputs),np.max(flat_dinputs)))
 
 

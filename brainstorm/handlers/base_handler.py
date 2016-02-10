@@ -200,6 +200,13 @@ class Handler(Describable):
             None
         """
 
+    @abc.abstractmethod
+    def make_c_contiguous(self,arr):
+        """POSSIBLY reallocate arr and return it in correct type, so that it is c-contiguous
+        TODO more doc
+        """
+
+
     # ---------------------------- Debug helpers ---------------------------- #
 
     @abc.abstractmethod

@@ -120,6 +120,16 @@ class PyCudaHandler(Handler):
                                                                arr.shape)
         mem.set(arr.astype(self.dtype))
 
+    def make_c_contiguous(self,arr):
+        if arr.flags.c_contiguous:
+            return arr
+        else:
+            new_arr = self.allocate(arr.shape)
+            self.copy_to(arr,new_arr)
+            return new_arr
+
+
+
     # ---------------------------- Debug helpers ---------------------------- #
 
     def is_fully_finite(self, a):
@@ -461,7 +471,13 @@ class PyCudaHandler(Handler):
 
     # cpu_ctc_np(acts, act_lens, labels, label_lens)
     def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
-        probs[probs < clip_ctc] = clip_ctc
+        
+        if clip_ctc !=0.0:
+            raise Exception('Cannot use clipping with Warp CTC')
+
+        probs = self.make_c_contiguous(probs)
+        labels = self.make_c_contiguous(labels)
+
         # FIXME try to understand my own stupid assumptions
         assert labels.dtype == np.int32, 'Labels have Python type %s and data type %s' % (type(labels),str(labels.dtype))
         if isinstance(labels,pycuda.gpuarray.GPUArray):

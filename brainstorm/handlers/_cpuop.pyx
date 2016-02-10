@@ -104,7 +104,8 @@ def calculate_ctc(np.ndarray[DTYPE_t, ndim=2] probs, np.ndarray[np.int64_t, ndim
     assert 0 not in labels
     assert not np.any(np.isnan(probs))
 #     print('Call to calculate_ctc: Minimu of probs is',np.min(probs))
-    probs[probs < clip_ctc] = clip_ctc
+    if clip_ctc >= 0.0:
+        probs[probs < clip_ctc] = clip_ctc
 #     assert np.all(probs >= 0.0)
     cdef int N = probs.shape[0]
     cdef int S = len(labels)
