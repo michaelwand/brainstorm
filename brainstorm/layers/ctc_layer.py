@@ -152,67 +152,74 @@ class CTCLayerImpl(Layer):
         loss = buffers.outputs.loss
 
         temp_dinputs = buffers.internals.temp_dinputs
-#         temp_dinputs2 = buffers.internals.temp_dinputs2
 
         # reshape
         flat_inputs = flatten_all_but_last(inputs)
         flat_predictions = flatten_all_but_last(predictions)
 
-        # softmax
+        # softmax - also needed for WarpCTC because of the predictions
         _h.softmax_m(flat_inputs, flat_predictions)
 
         # At this point, softmax is computed, and CTC code begins.
-        # The variable predictions has already been correctly filled
-        # Here, we compute the loss, and we save the deltas to temp_dinputs
-        # for being used in the backward pass.
-        # All this is performed sequence-wise and currently does not parallelize.
-        for sequence in xrange(inputs.shape[1]):
-            if mask is not None:
-                this_mask = mask[:,sequence,0] # TODO: astype OK?
-                mask_zero_index = _h.get_final_zeros_index_v(this_mask) 
 
-                these_inputs = inputs[0:mask_zero_index,sequence,:]
-                these_predictions = predictions[0:mask_zero_index,sequence,:]
-            else:
-                these_inputs = inputs[:,sequence,:]
-                these_predictions = predictions[:,sequence,:]
+        if self.use_warpctc:
+            if self.labels_on_gpu:
+                raise Exception('TODO')
+            _h.calculate_warpctc(inputs,mask,labels,temp_dinputs,loss,self.clip_ctc)
 
-            these_uncut_labels = labels[:,sequence,0]
+        else: 
+            # The variable predictions has already been correctly filled
+            # Here, we compute the loss, and we save the deltas to temp_dinputs
+            # for being used in the backward pass.
+            # All this is performed sequence-wise and currently does not parallelize.
+            for sequence in xrange(inputs.shape[1]):
+                if mask is not None:
+                    this_mask = mask[:,sequence,0] # TODO: astype OK?
+                    mask_zero_index = _h.get_final_zeros_index_v(this_mask) 
 
-            final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
-            these_cut_labels = these_uncut_labels[0:final_zero_index]
-
-            these_deltas = _h.allocate(these_predictions.shape)
-#             these_deltas2 = _h.allocate(these_predictions.shape)
-            if self.use_warpctc:
-                # TODO might pass entire minibatch
-                # CPU <-> GPU argh
-                if self.labels_on_gpu:
-                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels,these_deltas,self.clip_ctc)
+                    these_inputs = inputs[0:mask_zero_index,sequence,:]
+                    these_predictions = predictions[0:mask_zero_index,sequence,:]
                 else:
-                    these_cut_labels_cpu = _h.get_numpy_copy(these_cut_labels)
-                    this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas,self.clip_ctc)
-#                     this_error2 = _h.calculate_ctc(these_predictions,these_cut_labels_cpu,these_deltas2,self.clip_ctc)
-            else:
-                this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
-                _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
+                    these_inputs = inputs[:,sequence,:]
+                    these_predictions = predictions[:,sequence,:]
 
-#             print('CTC LAYER: deltas b/w %f and %f' % (np.min(these_deltas), np.max(these_deltas)))
+                these_uncut_labels = labels[:,sequence,0]
 
-            # TODO annoying: single float no work on GPU
-            loss[sequence,0] = np.array(this_error,dtype=loss.dtype)
+                final_zero_index = _h.get_final_zeros_index_v(these_uncut_labels)
+                these_cut_labels = these_uncut_labels[0:final_zero_index]
 
-            if mask is not None:
-                print('Temp_dinputs BEFORE is max %f' % np.max(abs(temp_dinputs[:,sequence,:].get())))
-                if np.max(abs(temp_dinputs[:,sequence,:].get())) > 0.001:
-                    pass
-                temp_dinputs[0:mask_zero_index,sequence,:] = these_deltas
-#                 temp_dinputs2[0:mask_zero_index,sequence,:] = these_deltas2
-                _h.fill(temp_dinputs[mask_zero_index:,sequence,:],0)
-#                 temp_dinputs2[mask_zero_index:,sequence,:] = 0
-            else:
-                temp_dinputs[:,sequence,:] = these_deltas
-#                 temp_dinputs2[:,sequence,:] = these_deltas2
+                these_deltas = _h.allocate(these_predictions.shape)
+    #             these_deltas2 = _h.allocate(these_predictions.shape)
+#                 if self.use_warpctc:
+#                     # TODO might pass entire minibatch
+#                     # CPU <-> GPU argh
+#                     if self.labels_on_gpu:
+#                         this_error = _h.calculate_warpctc(these_inputs,these_cut_labels,these_deltas,self.clip_ctc)
+#                     else:
+#                         these_cut_labels_cpu = _h.get_numpy_copy(these_cut_labels)
+#                         this_error = _h.calculate_warpctc(these_inputs,these_cut_labels_cpu,these_deltas,self.clip_ctc)
+#     #                     this_error2 = _h.calculate_ctc(these_predictions,these_cut_labels_cpu,these_deltas2,self.clip_ctc)
+#                 else:
+                if 1:
+                    this_error = _h.calculate_ctc(these_predictions,these_cut_labels,these_deltas,self.clip_ctc)
+                    _h.mult_st(-1, these_deltas, these_deltas) # fold "minus one" into calculate_ctc?
+
+    #             print('CTC LAYER: deltas b/w %f and %f' % (np.min(these_deltas), np.max(these_deltas)))
+
+                # TODO annoying: single float no work on GPU
+                loss[sequence,0] = np.array(this_error,dtype=loss.dtype)
+
+                if mask is not None:
+                    print('Temp_dinputs BEFORE is max %f' % np.max(abs(temp_dinputs[:,sequence,:].get())))
+                    if np.max(abs(temp_dinputs[:,sequence,:].get())) > 0.001:
+                        pass
+                    temp_dinputs[0:mask_zero_index,sequence,:] = these_deltas
+    #                 temp_dinputs2[0:mask_zero_index,sequence,:] = these_deltas2
+                    _h.fill(temp_dinputs[mask_zero_index:,sequence,:],0)
+    #                 temp_dinputs2[mask_zero_index:,sequence,:] = 0
+                else:
+                    temp_dinputs[:,sequence,:] = these_deltas
+    #                 temp_dinputs2[:,sequence,:] = these_deltas2
 
     def backward_pass(self, buffers):
         # prepare

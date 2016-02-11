@@ -469,42 +469,73 @@ class PyCudaHandler(Handler):
         
         return cpu_error
 
-    # cpu_ctc_np(acts, act_lens, labels, label_lens)
-    def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
-        
-        if clip_ctc !=0.0:
+    def calculate_warpctc(self, probs, mask, labels, out_deltas, out_loss, clip_ctc):
+        if clip_ctc != 0.0:
             raise Exception('Cannot use clipping with Warp CTC')
 
-        probs = self.make_c_contiguous(probs)
-        labels = self.make_c_contiguous(labels)
-
-        # FIXME try to understand my own stupid assumptions
-        assert labels.dtype == np.int32, 'Labels have Python type %s and data type %s' % (type(labels),str(labels.dtype))
-        if isinstance(labels,pycuda.gpuarray.GPUArray):
-            labels_on_gpu = True
+        # translate mask to WarpCTC format
+        if mask is not None:
+            # TODO this should work also for non-contiguous arrays, but it is not elegant. I think the
+            # data iterator has this information already!
+            prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
         else:
-            labels_on_gpu = False
-
-        assert isinstance(probs,pycuda.gpuarray.GPUArray)
-        assert probs.dtype == np.float32
+            prob_lengths = np.ones(probs.shape[1],dtype=np.int32)
         
-        assert probs.ndim == 2
-        reshaped_probs = probs.reshape((probs.shape[0],1,probs.shape[1]))
-        assert out_deltas.shape == probs.shape
-        reshaped_out_deltas = out_deltas.reshape((probs.shape[0],1,probs.shape[1]))
-        assert long(reshaped_out_deltas.gpudata) == long(out_deltas.gpudata)
+        # translate labels to WarpCTC format
 
-        if labels_on_gpu:
-            error = ctc.gpu_ctc_pycuda_gpulabels(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
-                    reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
-        else:
-            error = ctc.gpu_ctc_pycuda(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
-                    reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
-            
-#         assert out_deltas.flags['C_CONTIGUOUS']
-#         assert deltas.flags['C_CONTIGUOUS']
-#         out_deltas[:] = deltas[:,0,:]
-        return error[0]
+#         cpu_labels = labels.get()
+        assert labels.shape[2] == 1
+        assert labels.dtype == np.int32
+        flat_cpu_labels = np.empty(0,dtype=np.int32)
+        label_lengths = []
+        for seq in range(labels.shape[1]):
+            this_length = self.get_final_zeros_index_v(labels[:,seq,0])
+            flat_cpu_labels = np.concatenate((flat_cpu_labels,labels[0:this_length,seq,0].get()),axis=0)
+            label_lengths.append(this_length)
+
+# #         label_lengths = np.array([ self.get_final_zeros_index_v(labels[:,seq,0]) for seq in range(labels.shape[1]) ],dtype=np.int32)
+        out_deltas.fill(0.0)
+        error = ctc.gpu_ctc_pycuda(probs,prob_lengths,out_deltas,flat_cpu_labels,np.array(label_lengths,dtype=np.int32))
+        
+        # should be OK in the noncontiguous case
+        self.set_from_numpy(out_loss[:,0],error)
+    # cpu_ctc_np(acts, act_lens, labels, label_lens)
+
+#     def calculate_warpctc(self, probs, mask, labels, out_deltas, out_loss, clip_ctc):
+#         
+#         if clip_ctc !=0.0:
+#             raise Exception('Cannot use clipping with Warp CTC')
+# 
+#         probs = self.make_c_contiguous(probs)
+#         labels = self.make_c_contiguous(labels)
+# 
+#         # FIXME try to understand my own stupid assumptions
+#         assert labels.dtype == np.int32, 'Labels have Python type %s and data type %s' % (type(labels),str(labels.dtype))
+#         if isinstance(labels,pycuda.gpuarray.GPUArray):
+#             labels_on_gpu = True
+#         else:
+#             labels_on_gpu = False
+# 
+#         assert isinstance(probs,pycuda.gpuarray.GPUArray)
+#         assert probs.dtype == np.float32
+#         
+#         assert probs.ndim == 2
+#         reshaped_probs = probs.reshape((probs.shape[0],1,probs.shape[1]))
+#         assert out_deltas.shape == probs.shape
+#         reshaped_out_deltas = out_deltas.reshape((probs.shape[0],1,probs.shape[1]))
+#         assert long(reshaped_out_deltas.gpudata) == long(out_deltas.gpudata)
+# 
+#         if labels_on_gpu:
+#             error = ctc.gpu_ctc_pycuda_gpulabels(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
+#                     reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
+#         else:
+#             error = ctc.gpu_ctc_pycuda(reshaped_probs,np.array([probs.shape[0]],dtype=np.int32),
+#                     reshaped_out_deltas,labels,np.array([labels.shape[0]],dtype=np.int32))
+#             
+# #         assert out_deltas.flags['C_CONTIGUOUS']
+# #         assert deltas.flags['C_CONTIGUOUS']
+# #         out_deltas[:] = deltas[:,0,:]
+#         return error[0]
 
     def tanh(self, x, y):
         tanh_kernel(x, y)

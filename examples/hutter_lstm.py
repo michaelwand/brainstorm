@@ -16,6 +16,9 @@ from brainstorm.handlers import PyCudaHandler
 bs.global_rnd.set_seed(42)
 
 CUTOFF=10000
+MAXEPOCHS=2
+BATCH_SIZE=10
+assert sys.argv[1] in [ 'CPU', 'GPU' ]
 
 # ---------------------------- Set up Iterators ----------------------------- #
 
@@ -25,9 +28,9 @@ ds = h5py.File(data_file, 'r')['split']
 x_tr, y_tr = ds['training']['default'][:,0:CUTOFF,:], ds['training']['targets'][:,0:CUTOFF,:]
 x_va, y_va = ds['validation']['default'][:], ds['validation']['targets'][:]
 
-getter_tr = OneHot(Minibatches(100, default=x_tr, targets=y_tr, shuffle=False),
+getter_tr = OneHot(Minibatches(BATCH_SIZE, default=x_tr, targets=y_tr, shuffle=False),
                    {'default': 205})
-getter_va = OneHot(Minibatches(100, default=x_va, targets=y_va, shuffle=False),
+getter_va = OneHot(Minibatches(BATCH_SIZE, default=x_va, targets=y_va, shuffle=False),
                    {'default': 205})
 
 # ----------------------------- Set up Network ------------------------------ #
@@ -54,7 +57,7 @@ trainer.add_hook(bs.hooks.MonitorScores('valid_getter', scorers,
 #                                           filename='hutter_lstm_best.hdf5',
 #                                           name='best weights',
 #                                           criterion='min'))
-trainer.add_hook(bs.hooks.StopAfterEpoch(500))
+trainer.add_hook(bs.hooks.StopAfterEpoch(MAXEPOCHS))
 
 # -------------------------------- Train ------------------------------------ #
 

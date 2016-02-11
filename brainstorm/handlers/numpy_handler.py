@@ -335,38 +335,63 @@ class NumpyHandler(Handler):
         out_deltas[:] = deltas
         return error
 
-    # cpu_ctc_np(acts, act_lens, labels, label_lens)
-    def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
-#         probs[probs < clip_ctc] = clip_ctc
+    def calculate_warpctc(self, probs, mask, labels, out_deltas, out_loss, clip_ctc):
         if clip_ctc !=0.0:
             raise Exception('Cannot use clipping with Warp CTC')
+
+        # translate mask to WarpCTC format
+        if mask is not None:
+            prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+        else:
+            prob_lengths = np.ones(probs.shape[1],dtype=np.int32)
         
-        probmin = np.min(probs)
-        probmax = np.max(probs)
+        # translate labels to WarpCTC format
+        assert labels.shape[2] == 1
+        assert labels.dtype == np.int32
+        flat_labels = np.empty(0,dtype=np.int32)
+        label_lengths = []
+        for seq in range(labels.shape[1]):
+            this_length = self.get_final_zeros_index_v(labels[:,seq,0])
+            flat_labels = np.concatenate((flat_labels,labels[0:this_length,seq,0]),axis=0)
+            label_lengths.append(this_length)
 
-        probsum = np.sum(probs,axis=1)
-        minsum = np.min(probsum)
-        maxsum = np.max(probsum)
+# #         label_lengths = np.array([ self.get_final_zeros_index_v(labels[:,seq,0]) for seq in range(labels.shape[1]) ],dtype=np.int32)
+        out_deltas.fill(0.0)
+        error = ctc.cpu_ctc_np(probs,prob_lengths,out_deltas,flat_labels,np.array(label_lengths,dtype=np.int32))
+        out_loss[:,0] = error
 
-        probabssum = np.sum(abs(probs),axis=1)
-        minabssum = np.min(probabssum)
-        maxabssum = np.max(probabssum)
-
-        probs = probs[:,None,:]
-        probs = self.make_c_contiguous(probs)
-
-        labels = labels.astype(np.int32)
-        labels = self.make_c_contiguous(labels)
-        (error,deltas) = ctc.cpu_ctc_np(probs,np.array([probs.shape[0]],dtype=np.int32),labels,np.array([labels.shape[0]],dtype=np.int32))
-        
-        if np.isinf(error[0]):
-            print('WARPCTC INFINITE ERROR')
-#         print('WARPCTC call: probs from %f to %f, sums from %f to %f, abssums from %f to %f, deltas from %f to %f, error %f' % 
-#                 (probmin,probmax, minsum,maxsum,minabssum,maxabssum,np.min(deltas), np.max(deltas), error[0]))
-        assert out_deltas.flags['C_CONTIGUOUS']
-        assert deltas.flags['C_CONTIGUOUS']
-        out_deltas[:] = deltas[:,0,:]
-        return error[0]
+#     # cpu_ctc_np(acts, act_lens, labels, label_lens)
+#     def calculate_warpctc(self, probs, labels, out_deltas, clip_ctc):
+# #         probs[probs < clip_ctc] = clip_ctc
+#         if clip_ctc !=0.0:
+#             raise Exception('Cannot use clipping with Warp CTC')
+#         
+#         probmin = np.min(probs)
+#         probmax = np.max(probs)
+# 
+#         probsum = np.sum(probs,axis=1)
+#         minsum = np.min(probsum)
+#         maxsum = np.max(probsum)
+# 
+#         probabssum = np.sum(abs(probs),axis=1)
+#         minabssum = np.min(probabssum)
+#         maxabssum = np.max(probabssum)
+# 
+#         probs = probs[:,None,:]
+#         probs = self.make_c_contiguous(probs)
+# 
+#         labels = labels.astype(np.int32)
+#         labels = self.make_c_contiguous(labels)
+#         (error,deltas) = ctc.cpu_ctc_np(probs,np.array([probs.shape[0]],dtype=np.int32),labels,np.array([labels.shape[0]],dtype=np.int32))
+#         
+#         if np.isinf(error[0]):
+#             print('WARPCTC INFINITE ERROR')
+# #         print('WARPCTC call: probs from %f to %f, sums from %f to %f, abssums from %f to %f, deltas from %f to %f, error %f' % 
+# #                 (probmin,probmax, minsum,maxsum,minabssum,maxabssum,np.min(deltas), np.max(deltas), error[0]))
+#         assert out_deltas.flags['C_CONTIGUOUS']
+#         assert deltas.flags['C_CONTIGUOUS']
+#         out_deltas[:] = deltas[:,0,:]
+#         return error[0]
 
     def tanh(self, x, y):
         np.tanh(x, y)
