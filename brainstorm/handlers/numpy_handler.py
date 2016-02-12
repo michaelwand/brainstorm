@@ -341,23 +341,22 @@ class NumpyHandler(Handler):
 
         # translate mask to WarpCTC format
         if mask is not None:
-            prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+#             prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+            prob_lengths = np.sum(mask[:,:,0],axis=0).astype(np.int32)
         else:
-            prob_lengths = np.ones(probs.shape[1],dtype=np.int32)
+            prob_lengths = np.full(probs.shape[1],probs.shape[0],dtype=np.int32)
         
         # translate labels to WarpCTC format
         assert labels.shape[2] == 1
         assert labels.dtype == np.int32
         flat_labels = np.empty(0,dtype=np.int32)
-        label_lengths = []
+        label_lengths = np.sum(labels[:,:,0] != 0,axis=0).astype(np.int32)
         for seq in range(labels.shape[1]):
-            this_length = self.get_final_zeros_index_v(labels[:,seq,0])
+            this_length = label_lengths[seq]
             flat_labels = np.concatenate((flat_labels,labels[0:this_length,seq,0]),axis=0)
-            label_lengths.append(this_length)
 
-# #         label_lengths = np.array([ self.get_final_zeros_index_v(labels[:,seq,0]) for seq in range(labels.shape[1]) ],dtype=np.int32)
         out_deltas.fill(0.0)
-        error = ctc.cpu_ctc_np(probs,prob_lengths,out_deltas,flat_labels,np.array(label_lengths,dtype=np.int32))
+        error = ctc.cpu_ctc_np(probs,prob_lengths,out_deltas,flat_labels,label_lengths)
         out_loss[:,0] = error
 
 #     # cpu_ctc_np(acts, act_lens, labels, label_lens)

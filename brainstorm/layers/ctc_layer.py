@@ -145,7 +145,7 @@ class CTCLayerImpl(Layer):
         inputs = buffers.inputs.default
         labels = buffers.inputs.labels.astype(np.int32)
         if 'mask' in buffers.inputs.keys():
-            mask = buffers.inputs.mask.astype(int)
+            mask = buffers.inputs.mask
         else:
             mask = None
         predictions = buffers.outputs.predictions
@@ -168,6 +168,7 @@ class CTCLayerImpl(Layer):
             _h.calculate_warpctc(inputs,mask,labels,temp_dinputs,loss,self.clip_ctc)
 
         else: 
+            raise Exception('sdjhsdfjshdf') # TODO
             # The variable predictions has already been correctly filled
             # Here, we compute the loss, and we save the deltas to temp_dinputs
             # for being used in the backward pass.

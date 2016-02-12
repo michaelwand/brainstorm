@@ -477,9 +477,15 @@ class PyCudaHandler(Handler):
         if mask is not None:
             # TODO this should work also for non-contiguous arrays, but it is not elegant. I think the
             # data iterator has this information already!
-            prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+#             prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+
+            # sum on GPU and get
+            out = gpuarray.zeros((probs.shape[1],),dtype=mask.dtype)
+            self.sum_t(mask[:,:,0],0,out) # ok for noncontiguous
+            prob_lengths = out.get().astype(np.int32)
+
         else:
-            prob_lengths = np.ones(probs.shape[1],dtype=np.int32)
+            prob_lengths = np.full(probs.shape[1],probs.shape[0],dtype=np.int32)
         
         # translate labels to WarpCTC format
 
@@ -487,11 +493,11 @@ class PyCudaHandler(Handler):
         assert labels.shape[2] == 1
         assert labels.dtype == np.int32
         flat_cpu_labels = np.empty(0,dtype=np.int32)
-        label_lengths = []
-        for seq in range(labels.shape[1]):
-            this_length = self.get_final_zeros_index_v(labels[:,seq,0])
-            flat_cpu_labels = np.concatenate((flat_cpu_labels,labels[0:this_length,seq,0].get()),axis=0)
-            label_lengths.append(this_length)
+        cpu_labels = labels.get()
+        label_lengths = np.sum(cpu_labels[:,:,0] != 0,axis=0).astype(np.int32)
+        for seq in range(cpu_labels.shape[1]):
+            this_length = label_lengths[seq]
+            flat_cpu_labels = np.concatenate((flat_cpu_labels,cpu_labels[0:this_length,seq,0]),axis=0)
 
 # #         label_lengths = np.array([ self.get_final_zeros_index_v(labels[:,seq,0]) for seq in range(labels.shape[1]) ],dtype=np.int32)
         out_deltas.fill(0.0)
