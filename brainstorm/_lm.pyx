@@ -248,6 +248,7 @@ cdef class LanguageModel(object):
 
         # filter out tokens
         flt_seq = [ x for x in seq if x not in self.ignoredTokens ]
+#         print('LM CALL: Sequence is %s --> %s, irgnoring %s' % (seq,flt_seq,self.ignoredTokens))
         if len(flt_seq) == 0:
             return 0.0
 
@@ -295,7 +296,7 @@ cdef class LanguageModel(object):
                     raise LanguageModelStatsException('computeProbability: %s found in LM, but sub-sequence %s not found' % (oldSeq,flt_seq))
                 if depth == len(flt_seq):
                     # found
-                    assert lastNode.token is not None, 'LM for sequence %s: weird error' % seq
+                    assert lastNode.token is not None, 'LM for sequence %s (original %s): weird error' % (flt_seq,seq)
                     try:
                         res = lastNode.score + accumulatedBackoff
                     except TypeError as e:
