@@ -392,6 +392,18 @@ class NumpyHandler(Handler):
 #         out_deltas[:] = deltas[:,0,:]
 #         return error[0]
 
+    def reverse_with_mask(self, inp, mask, outp):
+        assert inp.ndim == 3
+        outp.fill(0.0)
+        # reverse along first axis, make certain undocumented assumptions about mask!
+        if mask is not None:
+            mask_lengths = np.sum(mask[:,:,0] != 0.0,axis=0).astype(np.int32)
+        else:
+            mask_lengths = np.full((inp.shape[1],),inp.shape[0])
+        for seq in range(inp.shape[1]):
+            outp[0:mask_lengths[seq],seq,:] = inp[mask_lengths[seq] - 1::-1,seq,:]
+
+
     def tanh(self, x, y):
         np.tanh(x, y)
 

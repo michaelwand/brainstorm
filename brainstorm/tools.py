@@ -425,6 +425,10 @@ def B(args):
     assert not args
     return layers.BatchNorm()
 
+# def S(args):
+#     assert not args
+#     return layers.Reverse()
+
 
 def D(args):
     if args:
@@ -454,7 +458,6 @@ def L(args):
     size = args[0]
     assert isinstance(size, int), "{}".format(size)
     return layers.Lstm(size, activation=activation)
-
 
 def C(args):
     if args and args[0] in act_funcs:
@@ -519,6 +522,7 @@ def create_layer(layer_type, args):
         'F': F,
         'B': B,
         'R': R,
+#         'S': S,
         'L': L,
         'D': D,
         'C': C,
@@ -549,6 +553,8 @@ def create_net_from_spec(task_type, in_shape, out_shape, spec,
           * F : FullyConnected
           * R : Recurrent
           * L : Lstm
+          * V : Bidirectional Lstm (TODO correct desc below)
+          * S : Reverse (wires mask)
           * B : BatchNorm
           * D : Dropout
           * C : Convolution2D
@@ -639,7 +645,31 @@ def create_net_from_spec(task_type, in_shape, out_shape, spec,
         layer_type = m.group('layer_type')
         args = re.split(ARG, m.group('args'))[1::2]
         args = [trynumber(a) for a in args if a != '']
-        current_layer >>= create_layer(layer_type, args)
+        # special case for bidirectional LSTM
+        if layer_type == 'V':
+            forward_part = L(args)
+            pre_reverse = layers.Reverse()
+            backward_part = L(args)
+            post_reverse = layers.Reverse()
+            merge_layer = layers.Merge()
+
+            current_layer >> forward_part
+            current_layer >> pre_reverse
+            if mask_name is not None:
+                inp - mask_name >> 'mask' - pre_reverse
+            pre_reverse >> backward_part
+            backward_part >> post_reverse
+            if mask_name is not None:
+                inp - mask_name >> 'mask' - post_reverse
+            forward_part >> 'inputs_1' - merge_layer
+            post_reverse >> 'inputs_2' - merge_layer
+            current_layer = merge_layer
+        elif layer_type == 'S':
+            new_layer = layers.Reverse()
+            inp - mask_name >> 'mask' - new_layer
+            current_layer >>= new_layer
+        else:
+            current_layer >>= create_layer(layer_type, args)
 
     net = Network.from_layer(current_layer >> outp)
     net.output_name = output_name

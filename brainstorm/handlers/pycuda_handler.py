@@ -543,6 +543,9 @@ class PyCudaHandler(Handler):
 # #         out_deltas[:] = deltas[:,0,:]
 #         return error[0]
 
+    def reverse_with_mask(self, inp, mask, outp):
+        raise Exception('Not implemented')
+
     def tanh(self, x, y):
         tanh_kernel(x, y)
 

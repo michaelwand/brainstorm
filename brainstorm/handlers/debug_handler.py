@@ -594,6 +594,9 @@ class DebugHandler(Handler):
     def calculate_warpctc(self, probs, labels, out_deltas):
         raise Exception('Not implemented')
 
+    def reverse_with_mask(self, inp, mask, outp):
+        raise Exception('Not implemented')
+
 # ############################ Helper Methods ############################### #
 
 
