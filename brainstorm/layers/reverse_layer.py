@@ -17,7 +17,7 @@ def Reverse(name=None):
 
 
 class ReverseLayerImpl(Layer):
-    expected_inputs = {'default': StructureTemplate('T', 'B', 'F')}
+    expected_inputs = {'default': StructureTemplate('T', 'B', '...')}
 
     optional_inputs = {'mask': StructureTemplate('T', 'B', 1)}
 
@@ -56,9 +56,9 @@ class ReverseLayerImpl(Layer):
                     "{}: in_shape ({}) for {} doesn't match StructureTemplate "
                     "{}".format(self.name, in_shape, input_name,all_inputs[input_name]))
     def setup(self, kwargs, in_shapes):
-        in_shape = in_shapes['default'].feature_size
+        in_shape = in_shapes['default'].feature_shape
         outputs = OrderedDict()
-        outputs['default'] = BufferStructure('T', 'B', in_shape)
+        outputs['default'] = BufferStructure('T', 'B', *in_shape)
         parameters = OrderedDict()
         internals = OrderedDict()
         return outputs, parameters, internals

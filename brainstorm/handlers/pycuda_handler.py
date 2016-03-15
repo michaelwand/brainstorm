@@ -371,12 +371,19 @@ class PyCudaHandler(Handler):
             cumisc.mult_matvec(m, v, out=out)
 
     def mult_add_mv(self, m, v, out):
-        if m.shape == v.shape:
-            self.mult_add_tt(m, v, out=out)
+        if 0:
+            if m.shape == v.shape:
+                self.mult_add_tt(m, v, out=out)
+            else:
+                tmp = self.allocate(out.shape)
+                cumisc.mult_matvec(m, v, out=tmp)
+                self.add_tt(tmp, out, out=out)
         else:
-            tmp = self.allocate(out.shape)
-            cumisc.mult_matvec(m, v, out=tmp)
-            self.add_tt(tmp, out, out=out)
+
+            grid, block = self._get_gridsize(m.shape[0] * m.shape[1])
+    #         _merge_impl(m.gpudata,v.gpudata,out.gpudata,np.int32(m.shape[0]),np.int32(m.shape[1]),5,block=block,grid=grid)
+    # # #         _mult_add_mv_impl(m.gpudata,v.gpudata,out.gpudata,np.int32(m.shape[0]),np.int32(m.shape[1]),block=block,grid=grid)
+            _mult_add_mv_impl(m,v,out,np.int32(m.shape[0]),np.int32(m.shape[1]),block=block,grid=grid)
 
     def mult_st(self, s, t, out):
         mult_st_kernel(s, t, out)
@@ -703,6 +710,20 @@ tanh_kernel = ElementwiseKernel(
     "tanh_kernel"
 )
 
+_mult_add_mv_kernel_code = """
+    #include "float.h"
+    /* m must be of shape n_rows * n_cols, and v must be of shape n_cols. out must have the same shape as m */
+    __global__ void mult_add_mv_kernel(float* m, float* v, float* out,
+                                 const int n_rows, const int n_cols) {
+//        const int pos = blockIdx.x * blockDim.x + threadIdx.x; // position in matrix
+//      const int row = pos / n_cols;
+//        const int col = pos % n_cols;
+//        out[pos] += m[pos] * v[col];
+      
+   }
+   """
+_mod = SourceModule(_mult_add_mv_kernel_code)
+_mult_add_mv_impl = _mod.get_function("mult_add_mv_kernel")
 
 __merge_kernel_code = """
     #include "float.h"

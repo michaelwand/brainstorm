@@ -393,7 +393,7 @@ class NumpyHandler(Handler):
 #         return error[0]
 
     def reverse_with_mask(self, inp, mask, outp):
-        assert inp.ndim == 3
+#         assert inp.ndim == 3
         outp.fill(0.0)
         # reverse along first axis, make certain undocumented assumptions about mask!
         if mask is not None:
