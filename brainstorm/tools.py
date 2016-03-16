@@ -338,10 +338,10 @@ def get_in_out_layers(task_type, in_shape, out_shape, data_name='default',
                         mask_name: ('T', 'B', 1)} 
         out_shape_dict.update(extra_inputs)
         inp_layer = layers.Input(out_shapes=out_shape_dict)
-        inp_layer = layers.Input(
-            out_shapes={data_name: ('T', 'B') + in_shape,
-                        targets_name: ('T', 'B') + t_shape,
-                        mask_name: ('T', 'B', 1)})
+#         inp_layer = layers.Input(
+#             out_shapes={data_name: ('T', 'B') + in_shape,
+#                         targets_name: ('T', 'B') + t_shape,
+#                         mask_name: ('T', 'B', 1)})
         mask_layer = layers.Mask()
         inp_layer - targets_name >> 'targets' - out_layer
         out_layer - 'loss' >> mask_layer >> layers.Loss()
