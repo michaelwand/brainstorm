@@ -914,6 +914,10 @@ class Handler(Describable):
         """
 
     @abc.abstractmethod
+    def reverse_with_mask(self, inp, mask, outp):
+        """ TODO always reverses along first axis """
+
+    @abc.abstractmethod
     def tanh(self, x, y):
         """Compute the tanh (hyperbolic tangent) function.
 
