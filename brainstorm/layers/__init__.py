@@ -27,5 +27,6 @@ from brainstorm.layers.recurrent_layer import Recurrent
 from brainstorm.layers.reverse_layer import Reverse
 from brainstorm.layers.sigmoid_ce_layer import SigmoidCE
 from brainstorm.layers.softmax_ce_layer import SoftmaxCE
+from brainstorm.layers.switch_layer import Switch
 from brainstorm.layers.squared_difference_layer import SquaredDifference
 from brainstorm.layers.squared_error_layer import SquaredError
