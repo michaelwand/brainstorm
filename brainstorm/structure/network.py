@@ -312,7 +312,7 @@ class Network(Seedable):
         assert not prune_view_references(fallback), \
             'fallback is not supported for weight modifiers'
         weight_mods = prune_view_references(weight_mods)
-        self.weight_modifiers = order_and_copy_modifiers(weight_mods)
+        self.weight_modifiers.update(order_and_copy_modifiers(weight_mods))
         # TODO: Check that all are ValueModifiers
 
     def set_gradient_modifiers(self, default_or_mod_dict=None, **kwargs):
@@ -353,7 +353,7 @@ class Network(Seedable):
         assert not prune_view_references(fallback), \
             'fallback is not supported for gradient modifiers'
         gradient_mods = prune_view_references(gradient_mods)
-        self.gradient_modifiers = order_and_copy_modifiers(gradient_mods)
+        self.gradient_modifiers.update(order_and_copy_modifiers(gradient_mods))
         # TODO: Check that all are ValueModifiers or GradientModifiers
 
     def set_handler(self, new_handler):
