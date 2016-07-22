@@ -14,7 +14,10 @@ import os
 if 'WARP_CTC_PATH' in os.environ:
     sys.path.insert(1,os.environ['WARP_CTC_PATH'])
 
-import ctc
+try:
+    import ctc
+except ImportError as e:
+    print('Could not import ctc, reason was %s' % str(e))
 
 # noinspection PyMethodMayBeStatic
 class NumpyHandler(Handler):
