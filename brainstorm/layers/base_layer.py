@@ -55,6 +55,9 @@ class Layer(object):
     expected_kwargs = {}
     """Set of all kwargs that this layer accepts"""
 
+    optional_kwargs = {}
+    """Set of optional kwargs that this layer accepts"""
+
     expected_inputs = {}
     """Names and shape-templates for all inputs of this layer"""
 
@@ -141,7 +144,7 @@ class Layer(object):
 
         Raises:
             LayerValidationError: if there are unexpected kwargs."""
-        unexpected_kwargs = set(self.kwargs) - set(self.expected_kwargs)
+        unexpected_kwargs = set(self.kwargs) - set(self.expected_kwargs) - set(self.optional_kwargs)
         if unexpected_kwargs:
             raise LayerValidationError("{}: Unexpected kwargs: {}".format(
                 self.name, unexpected_kwargs))

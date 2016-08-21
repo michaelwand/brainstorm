@@ -84,6 +84,7 @@ class CTCLayerImpl(Layer):
                        'labels': StructureTemplate('T', 'B', 1)}
 
     optional_inputs = {'mask': StructureTemplate('T', 'B', 1)}
+    optional_kwargs = {'use_warpctc','clip_ctc','labels_on_gpu'}
 
     computes_no_input_deltas_for = ['mask','labels']
     takes_no_output_deltas_from = ['predictions']

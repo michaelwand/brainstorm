@@ -10,6 +10,8 @@ from brainstorm.structure.buffers import (create_buffer_views_from_layout,
                                           get_total_size_slices_and_shapes)
 from brainstorm.structure.layout import create_layout
 
+import pytest
+
 np.random.seed(1234)
 HANDLER = DebugHandler(NumpyHandler(np.float64))
 
@@ -77,6 +79,7 @@ def set_up_layer(layer, specs):
 
 
 def run_deltas_test(layer, specs, inputs_name, outputs_name):
+#     pytest.set_trace() ###<-----------------  HIER
     eps = specs.get('eps', 1e-5)
     layer_buffers = set_up_layer(layer, specs)
     # First do a forward and backward pass to calculate gradients

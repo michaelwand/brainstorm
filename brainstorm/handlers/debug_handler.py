@@ -146,6 +146,9 @@ class DebugHandler(Handler):
             "{} != {}".format(mem.shape, arr.shape)
         self.handler.set_from_numpy(mem.array, arr)
 
+    def make_c_contiguous(self,arr):
+        return np.ascontiguousarray(arr)
+
     # ---------------------------- Debug helpers ---------------------------- #
 
     def is_fully_finite(self, a):
@@ -591,8 +594,29 @@ class DebugHandler(Handler):
         return error
 
     @check_for_inf_or_nan
-    def calculate_warpctc(self, probs, labels, out_deltas):
-        raise Exception('Not implemented')
+    def calculate_warpctc(self, probs, mask, labels, out_deltas, out_loss, clip_ctc):
+        if clip_ctc !=0.0:
+            raise Exception('Cannot use clipping with Warp CTC')
+
+        # translate mask to WarpCTC format
+        if mask is not None:
+#             prob_lengths = np.array([ self.get_final_zeros_index_v(mask[:,seq,0]) for seq in range(probs.shape[1]) ],dtype=np.int32)
+            prob_lengths = np.sum(mask[:,:,0],axis=0).astype(np.int32)
+        else:
+            prob_lengths = np.full(probs.shape[1],probs.shape[0],dtype=np.int32)
+        
+        # translate labels to WarpCTC format
+        assert labels.shape[2] == 1
+        assert labels.dtype == np.int32
+        flat_labels = np.empty(0,dtype=np.int32)
+        label_lengths = np.sum(labels[:,:,0] != 0,axis=0).astype(np.int32)
+        for seq in range(labels.shape[1]):
+            this_length = label_lengths[seq]
+            flat_labels = np.concatenate((flat_labels,labels[0:this_length,seq,0]),axis=0)
+
+        out_deltas.fill(0.0)
+        error = ctc.cpu_ctc_np(probs,prob_lengths,out_deltas,flat_labels,label_lengths)
+        out_loss[:,0] = error
 
     def reverse_with_mask(self, inp, mask, outp):
         raise Exception('Not implemented')

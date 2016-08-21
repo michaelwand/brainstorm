@@ -16,6 +16,7 @@ from brainstorm.layers.sigmoid_ce_layer import SigmoidCELayerImpl
 from brainstorm.layers.convolution_layer_2d import Convolution2DLayerImpl
 from brainstorm.layers.elementwise_layer import ElementwiseLayerImpl
 from brainstorm.layers.fully_connected_layer import FullyConnectedLayerImpl
+from brainstorm.layers.residual_layer import ResidualLayerImpl
 from brainstorm.layers.highway_layer import HighwayLayerImpl
 from brainstorm.layers.input_layer import InputLayerImpl
 from brainstorm.layers.l1_decay import L1DecayLayerImpl
@@ -71,6 +72,13 @@ def fully_connected_layer_2d(spec):
                                     NO_CON, NO_CON,
                                     size=(3, 3, 1),
                                     activation=spec['activation'])
+    return layer, spec
+
+def residual_layer(spec):
+#     pytest.set_trace() ###<-----------------  HIER
+#     spec['activation'] = 'linear'
+    in_shapes = {'default': BufferStructure('T', 'B', 4)}
+    layer = ResidualLayerImpl('ResidualLayer', in_shapes, NO_CON, NO_CON, size=4)
     return layer, spec
 
 
@@ -146,9 +154,7 @@ def ctc_layer(spec):
     in_shapes = {'default': BufferStructure('T', 'B', feature_dim),
                  'labels': BufferStructure('T', 'B', 1)}
 
-    layer = CTCLayerImpl('CTCLayer', in_shapes, NO_CON,
-                               NO_CON)
-
+    layer = CTCLayerImpl('CTCLayer', in_shapes, NO_CON, NO_CON,use_warpctc=True,clip_ctc=0.0) 
     spec['labels'] = labels
     print('Call to ctc_layer w/ returing spec',spec)
     return layer, spec
@@ -351,7 +357,7 @@ layers_to_test = [
 #     fully_connected_layer_2d,
 #     highway_layer,
 #     binomial_crossentropy_layer,
-    ctc_layer,
+#     ctc_layer,
 #     softmax_ce_layer,
 #     sigmoid_ce_layer,
 #     rnn_layer,
@@ -373,6 +379,7 @@ layers_to_test = [
 #     l1_decay_layer,
 #     l2_decay_layer,
 #     clockwork_layer,
+    residual_layer,
 #     clockwork_layer_2d,
 #     clockwork_lstm_layer,
 #     clockwork_lstm_layer_2d,
@@ -422,6 +429,7 @@ def test_deltas_calculation_of_layer(layer_specs):
         assert successful, "Deltas check failed for {}".format(layer.name)
 
 
+@pytest.mark.slow
 def test_gradients_for_layer(layer_specs):
     layer, specs = layer_specs
     successful = True
@@ -437,7 +445,7 @@ def test_gradients_for_layer(layer_specs):
 
         assert successful, "Gradients check failed for {}".format(layer.name)
 
-
+@pytest.mark.slow
 def test_layer_forward_pass_insensitive_to_internal_state_init(layer_specs):
     layer, specs = layer_specs
     layer_buffers = set_up_layer(layer, specs)
@@ -468,7 +476,7 @@ def test_layer_forward_pass_insensitive_to_internal_state_init(layer_specs):
             assert np.allclose(outputs[key], HANDLER.get_numpy_copy(value),
                                rtol=eps, atol=eps), internal
 
-
+@pytest.mark.slow
 def test_layer_backward_pass_insensitive_to_internal_state_init(layer_specs):
     layer, specs = layer_specs
     layer_buffers = set_up_layer(layer, specs)
@@ -506,7 +514,7 @@ def test_layer_backward_pass_insensitive_to_internal_state_init(layer_specs):
                 "Failed for internal.{} when inspecting {}".format(internal,
                                                                    key)
 
-
+@pytest.mark.slow
 def test_layer_add_to_deltas(layer_specs):
     layer, specs = layer_specs
     layer_buffers = set_up_layer(layer, specs)
@@ -550,7 +558,7 @@ def test_layer_add_to_deltas(layer_specs):
             print("Difference:\n", deltas[key] + 1.0 - obtained)
         assert passed, key
 
-
+@pytest.mark.slow
 def test_elementwise_act_func_gradients():
     pairs_to_test = [(HANDLER.sigmoid, HANDLER.sigmoid_deriv),
                      (HANDLER.tanh, HANDLER.tanh_deriv),
@@ -590,17 +598,17 @@ def test_elementwise_act_func_gradients():
             print(grad_approx - grad_calc)
         assert close
 
-
+@pytest.mark.slow
 def test_get_layer_class_from_typename():
     assert get_layer_class_from_typename('InputLayerImpl') == InputLayerImpl
     assert get_layer_class_from_typename('NoOpLayerImpl') == NoOpLayerImpl
 
-
+@pytest.mark.slow
 def test_get_layer_class_from_typename_raises_typeerror():
     with pytest.raises(TypeError):
         get_layer_class_from_typename('NonexistentLayer')
 
-
+@pytest.mark.slow
 def test_layer_constructor():
     a = Connection('l', 'default', 'A', 'default')
     b = Connection('l', 'default', 'B', 'default')
@@ -618,19 +626,20 @@ def test_layer_constructor():
     assert l.outgoing == {a, b}
     assert l.kwargs == {'size': 8}
 
-
+@pytest.mark.slow
 def test_nooplayer_raises_on_size_mismatch():
     with pytest.raises(LayerValidationError):
         l = NoOpLayerImpl('LayerName', {'default': ('T', 'B', 5,)}, NO_CON,
                           NO_CON, size=8)
 
-
+@pytest.mark.slow
 def test_inputlayer_raises_on_in_size():
     with pytest.raises(LayerValidationError):
         l = InputLayerImpl('LayerName', {'default': ('T', 'B', 5,)}, NO_CON,
                            NO_CON, out_shapes={'default': ('T', 'B', 5,)})
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("LayerClass", [
     NoOpLayerImpl, FullyConnectedLayerImpl
 ])
