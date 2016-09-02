@@ -15,6 +15,7 @@ from brainstorm.layers.elementwise_layer import Elementwise
 from brainstorm.layers.fully_connected_layer import FullyConnected
 from brainstorm.layers.highway_layer import Highway
 from brainstorm.layers.input_layer import Input
+from brainstorm.layers.join_layer import Join
 from brainstorm.layers.l1_decay import L1Decay
 from brainstorm.layers.l2_decay import L2Decay
 from brainstorm.layers.loss_layer import Loss
@@ -28,6 +29,6 @@ from brainstorm.layers.residual_layer import ResidualLayer
 from brainstorm.layers.reverse_layer import Reverse
 from brainstorm.layers.sigmoid_ce_layer import SigmoidCE
 from brainstorm.layers.softmax_ce_layer import SoftmaxCE
-from brainstorm.layers.switch_layer import Switch
 from brainstorm.layers.squared_difference_layer import SquaredDifference
 from brainstorm.layers.squared_error_layer import SquaredError
+from brainstorm.layers.targeted_loss_layer import TargetedLoss
