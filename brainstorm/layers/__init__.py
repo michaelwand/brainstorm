@@ -31,4 +31,3 @@ from brainstorm.layers.sigmoid_ce_layer import SigmoidCE
 from brainstorm.layers.softmax_ce_layer import SoftmaxCE
 from brainstorm.layers.squared_difference_layer import SquaredDifference
 from brainstorm.layers.squared_error_layer import SquaredError
-from brainstorm.layers.targeted_loss_layer import TargetedLoss
