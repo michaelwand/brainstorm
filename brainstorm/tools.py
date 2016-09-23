@@ -30,11 +30,13 @@ def draw_network(network, file_name='network.png'):
 
     try:
         import pygraphviz as pgv
-        graph = pgv.AGraph(directed=True)
+        graph = pgv.AGraph(directed=True,strict=False)
         for k, v in network.architecture.items():
-                for out_view, dest_list in v['@outgoing_connections'].items():
-                    for dest in dest_list:
-                        graph.add_edge(k, dest.split('.')[0])
+            for out_view, dest_list in v['@outgoing_connections'].items():
+                for dest in dest_list:
+                    (dest_node,dest_view) = dest.split('.')
+#                     connection_name = out_view + '-' + dest_view
+                    graph.add_edge(k, dest_node, taillabel=out_view, headlabel=dest_view, labelfontsize=10)
 
         graph.draw(file_name, prog='dot')
         print('Network drawing saved as {}'.format(file_name))
