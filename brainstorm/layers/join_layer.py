@@ -39,38 +39,6 @@ class JoinLayerImpl(Layer):
 
     expected_kwargs = {}
 
-    # TODO this could become the standard implementation
-    def _validate_in_shapes(self):
-        """Ensure all in_shapes are valid by comparing to `expected_inputs`.
-
-        Raises:
-            LayerValidationError: if there are unrecognized inputs, missing
-                                  inputs or inputs that don't match the
-                                  `StructureTemplate` from `expected_inputs`.
-        """
-        in_shape_names = set(self.in_shapes.keys())
-        input_names = set(self.expected_inputs.keys())
-        optional_input_names = set(self.optional_inputs.keys())
-
-        all_inputs = self.expected_inputs.copy()
-        all_inputs.update(self.optional_inputs)
-
-        if not in_shape_names.issubset(input_names | optional_input_names):
-            raise LayerValidationError(
-                'Invalid in_shapes. {} has no input(s) named "{}". Choices '
-                'are: {}'.format(self.name, in_shape_names - input_names,
-                                 input_names))
-
-        if not input_names.issubset(in_shape_names):
-            raise LayerValidationError(
-                '{}: All required inputs need to be connected. Missing {}.'
-                .format(self.name, input_names - in_shape_names))
-
-        for input_name, in_shape in self.in_shapes.items():
-            if not all_inputs[input_name].matches(in_shape):
-                raise LayerValidationError(
-                    "{}: in_shape ({}) for {} doesn't match StructureTemplate "
-                    "{}".format(self.name, in_shape, input_name,all_inputs[input_name]))
     def setup(self, kwargs, in_shapes):
         in_shape = in_shapes['input0'].feature_shape
         outputs = OrderedDict()
