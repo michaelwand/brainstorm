@@ -105,8 +105,8 @@ def extract(network, iter, buffer_names):
     if isinstance(buffer_names, six.string_types):
         buffer_names = [buffer_names]
 
-    time_steps = iter.data_shapes.values()[0][0] 
-    nr_examples = iter.data_shapes.values()[0][1]
+    time_steps = list(iter.data_shapes.values())[0][0] 
+    nr_examples = list(iter.data_shapes.values())[0][1]
     return_data = {}
     nr_items = 0
     for _ in run_network(network, iterator, all_inputs=False):
