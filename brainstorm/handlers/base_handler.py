@@ -584,6 +584,17 @@ class Handler(Describable):
         """
 
     @abc.abstractmethod
+    def multimerge_t(self, al, out):
+        """Merge arrays in list al along their last axis.
+
+        Args:
+            al (list of array_type): Arrays to be merged.
+            out (array_type): Array into which the output is placed.
+        Returns:
+            None
+        """
+
+    @abc.abstractmethod
     def maxpool2d_backward_batch(self, inputs, window, outputs, padding,
                                  stride, argmax, in_deltas, out_deltas):
         """Computes the gradients for 2D max-pooling on a batch of images.
@@ -731,6 +742,17 @@ class Handler(Describable):
             x (array_type): Array to be split.
             out_a (array_type): Array to which 1st part of x is added.
             out_b (array_type): Array to which 2nd part of x is added.
+        Returns:
+            None
+        """
+
+    @abc.abstractmethod
+    def multisplit_add_t(self, x, ol):
+        """Split array x along the last axis and add the parts to elements of ol.
+
+        Args:
+            x (array_type): Array to be split.
+            ol (list of array_type): List of arrays to which parts of x are added.
         Returns:
             None
         """

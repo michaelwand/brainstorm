@@ -59,6 +59,9 @@ class Layer(object):
     """Set of optional kwargs that this layer accepts"""
 
     expected_inputs = {}
+    """Names and shape-templates for expected inputs of this layer"""
+
+    optional_inputs = {}
     """Names and shape-templates for all inputs of this layer"""
 
     computes_no_input_deltas_for = ()
@@ -150,7 +153,7 @@ class Layer(object):
                 self.name, unexpected_kwargs))
 
     def _validate_in_shapes(self):
-        """Ensure all in_shapes are valid by comparing to `expected_inputs`.
+        """Ensure all in_shapes are valid by comparing to `expected_inputs` and `optional_inputs`.
 
         Raises:
             LayerValidationError: if there are unrecognized inputs, missing
@@ -159,8 +162,12 @@ class Layer(object):
         """
         in_shape_names = set(self.in_shapes.keys())
         input_names = set(self.expected_inputs.keys())
+        optional_input_names = set(self.optional_inputs.keys())
 
-        if not in_shape_names.issubset(input_names):
+        all_inputs = self.expected_inputs.copy()
+        all_inputs.update(self.optional_inputs)
+
+        if not in_shape_names.issubset(input_names | optional_input_names):
             raise LayerValidationError(
                 'Invalid in_shapes. {} has no input(s) named "{}". Choices '
                 'are: {}'.format(self.name, in_shape_names - input_names,
@@ -168,15 +175,43 @@ class Layer(object):
 
         if not input_names.issubset(in_shape_names):
             raise LayerValidationError(
-                '{}: All inputs need to be connected. Missing {}.'
+                '{}: All required inputs need to be connected. Missing {}.'
                 .format(self.name, input_names - in_shape_names))
 
         for input_name, in_shape in self.in_shapes.items():
-            if not self.expected_inputs[input_name].matches(in_shape):
+            if not all_inputs[input_name].matches(in_shape):
                 raise LayerValidationError(
                     "{}: in_shape ({}) for {} doesn't match StructureTemplate "
-                    "{}".format(self.name, in_shape, input_name,
-                                self.expected_inputs[input_name]))
+                    "{}".format(self.name, in_shape, input_name,all_inputs[input_name]))
+
+#     def _validate_in_shapes(self):
+#         """Ensure all in_shapes are valid by comparing to `expected_inputs`.
+# 
+#         Raises:
+#             LayerValidationError: if there are unrecognized inputs, missing
+#                                   inputs or inputs that don't match the
+#                                   `StructureTemplate` from `expected_inputs`.
+#         """
+#         in_shape_names = set(self.in_shapes.keys())
+#         input_names = set(self.expected_inputs.keys())
+# 
+#         if not in_shape_names.issubset(input_names):
+#             raise LayerValidationError(
+#                 'Invalid in_shapes. {} has no input(s) named "{}". Choices '
+#                 'are: {}'.format(self.name, in_shape_names - input_names,
+#                                  input_names))
+# 
+#         if not input_names.issubset(in_shape_names):
+#             raise LayerValidationError(
+#                 '{}: All inputs need to be connected. Missing {}.'
+#                 .format(self.name, input_names - in_shape_names))
+# 
+#         for input_name, in_shape in self.in_shapes.items():
+#             if not self.expected_inputs[input_name].matches(in_shape):
+#                 raise LayerValidationError(
+#                     "{}: in_shape ({}) for {} doesn't match StructureTemplate "
+#                     "{}".format(self.name, in_shape, input_name,
+#                                 self.expected_inputs[input_name]))
 
     def _validate_connections(self):
         """

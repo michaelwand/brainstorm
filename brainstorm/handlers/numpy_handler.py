@@ -244,6 +244,13 @@ class NumpyHandler(Handler):
         out_flat[:, :sa] = a.reshape(-1, a.shape[-1])
         out_flat[:, sa:] = b.reshape(-1, b.shape[-1])
 
+    def multimerge_t(self, al, out):
+        out_flat = out.reshape(-1, out.shape[-1])
+        current_from = 0
+        for a in al:
+            current_to = current_from + a.shape[-1]
+            out_flat[:,current_from:current_to] = a.reshape(-1, a.shape[-1])
+
     def modulo_tt(self, a, b, out):
         np.fmod(a, b, out)
 
@@ -274,6 +281,14 @@ class NumpyHandler(Handler):
         x_flat = x.reshape(-1, x.shape[-1])
         oa[:] += x_flat[:, :oa.shape[-1]]
         ob[:] += x_flat[:, oa.shape[-1]:]
+
+    def multisplit_add_t(self, x, ol):
+        in_flat = x.reshape(-1, x.shape[-1])
+        current_from = 0
+        for o in ol:
+            o_flat = o.reshape(-1,o.shape[-1])
+            current_to = current_from + o_flat.shape[-1]
+            o_flat[:,:] += in_flat[:,current_from:current_to]
 
     def sqrt_t(self, a, out):
         np.sqrt(a, out)

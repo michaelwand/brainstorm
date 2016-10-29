@@ -358,6 +358,9 @@ class PyCudaHandler(Handler):
                     np.int32(n), np.int32(a.shape[-1]), np.int32(b.shape[-1]),
                     block=block, grid=grid)
 
+    def multimerge_t(self, al, out):
+        raise Exception('not implemented')
+
     def modulo_tt(self, a, b, out):
         modulo_tt_kernel(a, b, out)
 
@@ -405,6 +408,9 @@ class PyCudaHandler(Handler):
                         np.int32(n), np.int32(out_a.shape[-1]),
                         np.int32(out_b.shape[-1]),
                         block=block, grid=grid)
+
+    def multisplit_add_t(self, x, ol):
+        raise Exception('not implemented')
 
     def sqrt_t(self, a, out):
         cumath.sqrt(a, out=out)
